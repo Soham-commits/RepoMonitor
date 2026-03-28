@@ -84,21 +84,26 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false }: RepoRo
   const { status, lastPushIso, commitsCount, recentCommitsCount, contributorsCount, lastCommitMessage } = getRepoStatusAndDetails(data);
 
   // Flags as solid badges
-  const flags = [];
-  const isNotFound = status === "Error" && data?.error === "not_found";
-  const isPrivate = data?.repoInfo?.visibility === "private";
+  const flags: Array<{ text: string; color: string }> = [];
+  const isPrivateFlag = data?.error === "not_found" || data?.repoInfo?.visibility === "private";
+  const isTimeoutFlag = data?.error === "timeout";
 
-  if (isNotFound || isPrivate) {
-    flags.push({ text: "PRIVATE", color: "bg-gray-500", icon: <Lock className="w-3 h-3" /> });
+  if (isPrivateFlag) {
+    flags.push({ text: "PRIVATE", color: "bg-gray-500 text-white" });
+  } else if (isTimeoutFlag) {
+    flags.push({ text: "TIMEOUT", color: "bg-orange-500 text-black" });
+  } else {
+    if (commitsCount === 0 && status !== "Loading") {
+      flags.push({ text: "NO COMMITS", color: "bg-red-500 text-white" });
+    }
+
+    if (contributorsCount === 1) {
+      flags.push({ text: "SOLO", color: "bg-yellow-500 text-black" });
+    }
   }
 
-  if (commitsCount === 0 && status !== "Loading" && !isNotFound) {
-    flags.push({ text: "NO COMMITS", color: "bg-red-500", icon: <AlertTriangle className="w-3 h-3" /> });
-  }
-
-  if (contributorsCount === 1) {
-    flags.push({ text: "SOLO", color: "bg-yellow-500 text-black", icon: <User className="w-3 h-3" /> });
-  }
+  const isPrivateRow = isPrivateFlag;
+  const statusText = isPrivateRow ? "PRIVATE" : status === "Timeout" ? "TIMEOUT" : status;
 
   const relativePush = formatRelativeTime(lastPushIso);
   const truncateMessage = (msg: string | null) => {
@@ -135,39 +140,53 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false }: RepoRo
       {/* Last Push */}
       <td
         className="py-6 px-4 align-middle whitespace-nowrap"
-        title={lastPushIso ? new Date(lastPushIso).toISOString() : undefined}
+        title={!isPrivateRow && lastPushIso ? new Date(lastPushIso).toISOString() : undefined}
       >
-        <span className={`font-mono text-sm font-bold ${relativePush.colorClass}`}>
-          {relativePush.text}
-        </span>
+        {isPrivateRow ? (
+          <span className="text-white/20">—</span>
+        ) : (
+          <span className={`font-mono text-sm font-bold ${relativePush.colorClass}`}>
+            {relativePush.text}
+          </span>
+        )}
       </td>
 
       {/* Hackathon Commits */}
       <td className="py-6 px-4 align-middle whitespace-nowrap text-center">
-        <span className={`text-xl font-black font-mono ${commitsCount > 0 ? "text-green-400" : "text-red-400"}`}>
-          {status === "Loading" ? "-" : commitsCount}
-        </span>
+        {isPrivateRow ? (
+          <span className="text-white/20">—</span>
+        ) : (
+          <span className={`text-xl font-black font-mono ${commitsCount > 0 ? "text-green-400" : "text-red-400"}`}>
+            {status === "Loading" ? "-" : commitsCount}
+          </span>
+        )}
       </td>
 
       {/* Recent Activity (30d) */}
       <td className="py-6 px-4 align-middle whitespace-nowrap">
-        <div className="flex flex-col items-center">
-          <div className="text-white font-bold font-mono">{status === "Loading" ? "—" : recentCommitsCount}</div>
-          <div className="text-[10px] text-white/40 uppercase font-bold tracking-tighter">30d activity</div>
-        </div>
+        {isPrivateRow ? (
+          <div className="text-center text-white/20">—</div>
+        ) : (
+          <div className="flex flex-col items-center">
+            <div className="text-white font-bold font-mono">{status === "Loading" ? "—" : recentCommitsCount}</div>
+            <div className="text-[10px] text-white/40 uppercase font-bold tracking-tighter">30d activity</div>
+          </div>
+        )}
       </td>
 
       {/* Contributors */}
       <td className="py-6 px-4 align-middle whitespace-nowrap text-center text-white font-mono font-medium">
-        {contributorsCount !== null ? contributorsCount : (status === "Error" ? "?" : "—")}
+        {isPrivateRow ? "—" : (contributorsCount !== null ? contributorsCount : (status === "Error" ? "?" : "—"))}
       </td>
 
       {/* Last Commit Message */}
       <td
         className="py-6 px-4 align-middle min-w-[240px] max-w-[300px]"
-        title={lastCommitMessage ? lastCommitMessage.replace(/^["']|["']$/g, '') : undefined}
+        title={!isPrivateRow && lastCommitMessage ? lastCommitMessage.replace(/^["']|["']$/g, '') : undefined}
       >
-        {status === "Loading" ? (
+        {isPrivateRow ? (
+          <span className="text-white/20 italic text-xs">—</span>
+        ) : status === "Loading" ? (
           <span className="text-white/20 italic text-xs">Loading...</span>
         ) : lastCommitMessage ? (
           <p className="text-white/60 italic text-sm truncate">
@@ -181,6 +200,7 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false }: RepoRo
       {/* Status (Solid Badges) */}
       <td className="py-6 px-4 align-middle whitespace-nowrap">
         <div className={`px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-widest shadow-lg flex items-center justify-center gap-1.5
+          ${isPrivateRow ? 'bg-gray-600 text-white' : ''}
           ${status === 'Active' ? 'bg-green-500 text-black' : ''}
           ${status === 'Idle' ? 'bg-yellow-400 text-black' : ''}
           ${status === 'Inactive' ? 'bg-red-500 text-white' : ''}
@@ -190,7 +210,7 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false }: RepoRo
           ${status === 'Loading' ? 'bg-white/10 text-white/40 border border-white/10' : ''}
         `}>
           {status === 'Active' && <div className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />}
-          {status === 'Timeout' ? 'TIMEOUT' : status}
+          {statusText}
         </div>
       </td>
 
@@ -200,7 +220,6 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false }: RepoRo
           {flags.length === 0 && status !== 'Loading' && <span className="text-white/10 text-center">-</span>}
           {flags.map((flag, i) => (
              <div key={i} className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter ${flag.color}`}>
-               {flag.icon}
                <span>{flag.text}</span>
              </div>
           ))}

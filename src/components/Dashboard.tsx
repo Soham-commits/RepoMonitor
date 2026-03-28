@@ -47,13 +47,14 @@ export function Dashboard({ repos, pat }: DashboardProps) {
 
   // Derive stats
   const stats = useMemo(() => {
-    let active = 0, idle = 0, inactive = 0;
+    let active = 0, idle = 0, inactive = 0, dead = 0;
     for (const item of allReposList) {
       if (item.details.status === "Active") active++;
       else if (item.details.status === "Idle") idle++;
       else if (item.details.status === "Inactive") inactive++;
+      else if (item.details.status === "Dead") dead++;
     }
-    return { active, idle, inactive, total: repos.length };
+    return { active, idle, inactive, dead, total: repos.length };
   }, [allReposList, repos.length]);
 
   // Filtering & Sorting
@@ -209,7 +210,7 @@ export function Dashboard({ repos, pat }: DashboardProps) {
         </AnimatePresence>
 
         {/* Top Stats Bar */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="p-6 rounded-3xl bg-white/5 backdrop-blur-md border border-white/10 flex flex-col gap-1.5 shadow-xl">
             <span className="text-sm text-cyan-100 font-medium">Total Teams</span>
             <span className="text-3xl font-bold text-white">{stats.total}</span>
@@ -225,6 +226,10 @@ export function Dashboard({ repos, pat }: DashboardProps) {
           <div className="p-6 rounded-3xl bg-red-500/10 backdrop-blur-md border border-red-500/20 flex flex-col gap-1.5 shadow-xl">
             <span className="text-sm text-red-200 font-medium">No Activity</span>
             <span className="text-3xl font-bold text-red-400">{stats.inactive}</span>
+          </div>
+          <div className="p-6 rounded-3xl bg-neutral-800/60 backdrop-blur-md border border-white/10 flex flex-col gap-1.5 shadow-xl">
+            <span className="text-sm text-white/70 font-medium">Dead</span>
+            <span className="text-3xl font-bold text-white">{stats.dead}</span>
           </div>
         </div>
 
@@ -257,7 +262,7 @@ export function Dashboard({ repos, pat }: DashboardProps) {
               <option value="Active">Active</option>
               <option value="Idle">Idle</option>
               <option value="Inactive">Inactive</option>
-              <option value="Error">Error</option>
+              <option value="Dead">Dead</option>
             </select>
           </div>
 
