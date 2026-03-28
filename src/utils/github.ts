@@ -4,8 +4,8 @@
 // ---------------------------------------------------------------------------
 // UTC Constants (hardcoded — no runtime conversion)
 // ---------------------------------------------------------------------------
-export const HACKATHON_START = "2026-04-02T06:30:00Z";
-export const HACKATHON_END = "2026-04-04T18:29:00Z";
+export const HACKATHON_START = "2026-01-01T00:00:00Z";
+export const HACKATHON_END = "2026-12-31T23:59:59Z";
 
 // ---------------------------------------------------------------------------
 // TypeScript Types
@@ -67,6 +67,7 @@ export type FetchResult<T> =
   | { data: T; rateLimit: RateLimitState }
   | { error: "rate_limited"; retryAfter: number; rateLimit: RateLimitState }
   | { error: "not_found"; rateLimit: RateLimitState }
+  | { error: "timeout"; rateLimit: RateLimitState }
   | { error: "aborted" }
   | { commits: CommitData[]; status: "empty"; rateLimit: RateLimitState };
 
@@ -92,6 +93,7 @@ function cacheKey(owner: string, repo: string, endpoint: string): string {
 
 // Key format: "owner/repo"
 const lastPollTime = new Map<string, string>();
+let lastKnownRateLimitRemaining = 5000;
 
 function repoKey(owner: string, repo: string): string {
   return `${owner}/${repo}`;
@@ -162,7 +164,11 @@ async function fetchWithRetry(
     }
 
     try {
-      const response = await fetch(url, { ...options, signal });
+      const timeoutSignal = AbortSignal.timeout(8000);
+      const combinedSignal = signal
+        ? AbortSignal.any([signal, timeoutSignal])
+        : timeoutSignal;
+      const response = await fetch(url, { ...options, signal: combinedSignal });
 
       // Do not retry 4xx (client errors)
       if (response.status >= 400 && response.status < 500) {
@@ -182,8 +188,18 @@ async function fetchWithRetry(
 
       return response;
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        throw err; // Propagate abort immediately
+      if (err instanceof DOMException) {
+        if (err.name === "TimeoutError") {
+          throw err;
+        }
+        if (err.name === "AbortError") {
+          const reason = (timeoutSignal.reason as DOMException | undefined) ??
+            ((signal as AbortSignal | undefined)?.reason as DOMException | undefined);
+          if (reason?.name === "TimeoutError") {
+            throw new DOMException("Timeout", "TimeoutError");
+          }
+          throw err; // Propagate abort immediately
+        }
       }
 
       lastError = err instanceof Error ? err : new Error(String(err));
@@ -218,6 +234,7 @@ async function cachedGet<T>(
   | { status: 403; rateLimit: RateLimitState; retryAfter: number }
   | { status: 404; rateLimit: RateLimitState }
   | { status: "aborted" }
+  | { status: "timeout" }
   | { status: "network_error" }
 > {
   const key = cacheKey(owner, repo, endpoint);
@@ -228,8 +245,13 @@ async function cachedGet<T>(
   try {
     response = await fetchWithRetry(url, { method: "GET", headers }, signal);
   } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") {
-      return { status: "aborted" };
+    if (err instanceof DOMException) {
+      if (err.name === "TimeoutError") {
+        return { status: "timeout" };
+      }
+      if (err.name === "AbortError") {
+        return { status: "aborted" };
+      }
     }
     // network_error or max retries exceeded
     throw new Error("network_error");
@@ -279,6 +301,7 @@ async function paginatedGet<T extends unknown[]>(
 ): Promise<
   | { data: T; rateLimit: RateLimitState; stopped: boolean }
   | { status: "aborted" }
+  | { status: "timeout" }
   | { status: 403; rateLimit: RateLimitState; retryAfter: number }
   | { status: 404; rateLimit: RateLimitState }
 > {
@@ -286,6 +309,8 @@ async function paginatedGet<T extends unknown[]>(
   let page = 1;
   let lastRateLimit: RateLimitState = { remaining: 5000, reset: 0, limit: 5000 };
   let stopped = false;
+
+  const maxPages = 2;
 
   while (true) {
     const pageUrl = `${baseUrl}&page=${page}`;
@@ -301,6 +326,7 @@ async function paginatedGet<T extends unknown[]>(
     );
 
     if (result.status === "aborted") return { status: "aborted" };
+    if (result.status === "timeout") return { status: "timeout" };
     if (result.status === 403) return result;
     if (result.status === 404) return result;
     if (result.status === "network_error") return { status: 404, rateLimit: lastRateLimit };
@@ -319,6 +345,9 @@ async function paginatedGet<T extends unknown[]>(
 
     // No more pages
     if (pageData.length === 0) break;
+
+    // Stop after max pages to cap fetch time
+    if (page >= maxPages) break;
 
     page++;
   }
@@ -340,7 +369,7 @@ export interface FetchRepoDataResult {
   contributors: ContributorData[] | null; // Tier 2 only
   rateLimit: RateLimitState;
   tier: TierLevel;
-  error?: "rate_limited" | "not_found" | "aborted";
+  error?: "rate_limited" | "not_found" | "aborted" | "timeout";
   retryAfter?: number;
   stoppedEarly?: boolean;             // Tier 2 stopped due to low rate limit
 }
@@ -351,26 +380,19 @@ export async function fetchRepoData(
   pat?: string,
   signal?: AbortSignal
 ): Promise<FetchRepoDataResult> {
-  const now = new Date().toISOString();
-  const since = getLastPollTime(owner, repo);
-  const until = HACKATHON_END;
-
-  // Default fallback rate limit
   let rateLimit: RateLimitState = { remaining: 5000, reset: 0, limit: 5000 };
 
   // -------------------------------------------------------------------------
-  // Tier 1: Repo info
+  // Tier 1: Repo info + delta commits (parallel)
   // -------------------------------------------------------------------------
-  const repoInfoResult = await cachedGet<RepoInfo>(
-    owner,
-    repo,
-    "repo_info",
-    `https://api.github.com/repos/${owner}/${repo}`,
-    pat,
-    signal
-  );
+  const tier2Allowed = lastKnownRateLimitRemaining > 2000;
+  const [repoInfoResult, deltaResult, contributorsResult] = await Promise.all([
+    fetchRepoInfo(owner, repo, pat, signal),
+    fetchDeltaCommits(owner, repo, pat, signal),
+    tier2Allowed ? fetchContributors(owner, repo, pat, signal) : Promise.resolve(null),
+  ]);
 
-  if (repoInfoResult.status === "aborted" || repoInfoResult.status === "network_error") {
+  if ("error" in repoInfoResult && repoInfoResult.error === "timeout") {
     return {
       repoInfo: null,
       deltaCommits: [],
@@ -380,11 +402,25 @@ export async function fetchRepoData(
       contributors: null,
       rateLimit,
       tier: 1,
-      error: repoInfoResult.status === "aborted" ? "aborted" : undefined,
+      error: "timeout",
     };
   }
 
-  if (repoInfoResult.status === 404) {
+  if ("error" in repoInfoResult && repoInfoResult.error === "aborted") {
+    return {
+      repoInfo: null,
+      deltaCommits: [],
+      recentCommits: [],
+      fullCommits: null,
+      contributorCount: null,
+      contributors: null,
+      rateLimit,
+      tier: 1,
+      error: "aborted",
+    };
+  }
+
+  if ("error" in repoInfoResult && repoInfoResult.error === "not_found") {
     return {
       repoInfo: null,
       deltaCommits: [],
@@ -398,7 +434,7 @@ export async function fetchRepoData(
     };
   }
 
-  if (repoInfoResult.status === 403) {
+  if ("error" in repoInfoResult && repoInfoResult.error === "rate_limited") {
     return {
       repoInfo: null,
       deltaCommits: [],
@@ -417,23 +453,7 @@ export async function fetchRepoData(
   rateLimit = repoInfoSuccess.rateLimit;
   const repoInfo = repoInfoSuccess.data;
 
-  // -------------------------------------------------------------------------
-  // Tier 1: Delta commits (since lastPollTime, exclude merges + bots)
-  // -------------------------------------------------------------------------
-  const deltaUrl =
-    `https://api.github.com/repos/${owner}/${repo}/commits` +
-    `?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}&per_page=100`;
-
-  const deltaResult = await cachedGet<CommitData[]>(
-    owner,
-    repo,
-    `commits:delta:${since}`,
-    deltaUrl,
-    pat,
-    signal
-  );
-
-  if (deltaResult.status === "aborted" || deltaResult.status === "network_error") {
+  if ("error" in deltaResult && deltaResult.error === "timeout") {
     return {
       repoInfo,
       deltaCommits: [],
@@ -443,11 +463,25 @@ export async function fetchRepoData(
       contributors: null,
       rateLimit,
       tier: 1,
-      error: deltaResult.status === "aborted" ? "aborted" : undefined,
+      error: "timeout",
     };
   }
 
-  if (deltaResult.status === 403) {
+  if ("error" in deltaResult && deltaResult.error === "aborted") {
+    return {
+      repoInfo,
+      deltaCommits: [],
+      recentCommits: [],
+      fullCommits: null,
+      contributorCount: null,
+      contributors: null,
+      rateLimit,
+      tier: 1,
+      error: "aborted",
+    };
+  }
+
+  if ("error" in deltaResult && deltaResult.error === "rate_limited") {
     return {
       repoInfo,
       deltaCommits: [],
@@ -462,7 +496,7 @@ export async function fetchRepoData(
     };
   }
 
-  if (deltaResult.status === 404) {
+  if ("error" in deltaResult && deltaResult.error === "not_found") {
     return {
       repoInfo,
       deltaCommits: [],
@@ -476,37 +510,16 @@ export async function fetchRepoData(
     };
   }
 
-  const deltaSuccess = deltaResult as { data: CommitData[]; rateLimit: RateLimitState };
-  rateLimit = deltaSuccess.rateLimit;
-
-  // Filter: exclude merge commits (>1 parent) + bot authors (login ends in [bot])
-  const rawDelta = deltaSuccess.data ?? [];
-  const deltaCommits = filterCommits(rawDelta);
-
-  // --- Tier 1b: Contributors (Now Tier 1 to avoid "?" in UI) ---
-  const contributorsResult = await cachedGet<ContributorData[]>(
-    owner,
-    repo,
-    "contributors",
-    `https://api.github.com/repos/${owner}/${repo}/contributors?per_page=100`,
-    pat,
-    signal
-  );
-
-  let contributors: ContributorData[] | null = null;
-  let contributorCount: number | null = null;
-
-  if (
-    contributorsResult.status === "ok" ||
-    contributorsResult.status === "not_modified"
-  ) {
-    const successContrib = contributorsResult as { data: ContributorData[]; rateLimit: RateLimitState };
-    rateLimit = successContrib.rateLimit;
-    contributors = successContrib.data;
-    contributorCount = contributors.length;
+  let deltaCommits: CommitData[] = [];
+  if ("data" in deltaResult) {
+    rateLimit = deltaResult.rateLimit;
+    deltaCommits = deltaResult.data;
+  } else if ("commits" in deltaResult && deltaResult.status === "empty") {
+    rateLimit = deltaResult.rateLimit;
+    deltaCommits = [];
   }
 
-  // --- Tier 1c: Recent commits (last 30 total) ---
+  // --- Tier 1b: Recent commits (last 30 total) ---
   const recentResult = await cachedGet<CommitData[]>(
     owner,
     repo,
@@ -516,33 +529,62 @@ export async function fetchRepoData(
     signal
   );
 
-  const recentCommits = (recentResult.status === "ok" || recentResult.status === "not_modified")
-    ? filterCommits((recentResult as { data: CommitData[] }).data ?? [])
-    : [];
-
-  // Update lastPollTime to now so next call fetches only new commits
-  setLastPollTime(owner, repo, now);
-
-  // -------------------------------------------------------------------------
-  // Tier 2 — conditional on remaining > 2000
-  // -------------------------------------------------------------------------
-  if (rateLimit.remaining <= 2000) {
+  if (recentResult.status === "timeout") {
     return {
       repoInfo,
       deltaCommits,
-      recentCommits,
+      recentCommits: [],
       fullCommits: null,
       contributorCount: null,
       contributors: null,
       rateLimit,
       tier: 1,
+      error: "timeout",
     };
   }
 
-  // --- Tier 2a: (Placeholder for previous tier split) ---
-  // (Assignment moved to Tier 1)
+  if (recentResult.status === "aborted") {
+    return {
+      repoInfo,
+      deltaCommits,
+      recentCommits: [],
+      fullCommits: null,
+      contributorCount: null,
+      contributors: null,
+      rateLimit,
+      tier: 1,
+      error: "aborted",
+    };
+  }
 
-  if (contributorsResult.status === "aborted") {
+  const recentCommits = (recentResult.status === "ok" || recentResult.status === "not_modified")
+    ? filterCommits((recentResult as { data: CommitData[] }).data ?? [])
+    : [];
+
+  let contributors: ContributorData[] | null = null;
+  let contributorCount: number | null = null;
+
+  if (contributorsResult && "data" in contributorsResult) {
+    rateLimit = contributorsResult.rateLimit;
+    contributors = contributorsResult.data;
+    contributorCount = contributors.length;
+  }
+
+  if (contributorsResult && "error" in contributorsResult && contributorsResult.error === "timeout") {
+    return {
+      repoInfo,
+      deltaCommits,
+      recentCommits,
+      fullCommits: null,
+      contributorCount,
+      contributors,
+      rateLimit,
+      tier: 1,
+      error: "timeout",
+    };
+  }
+
+  if (contributorsResult && "error" in contributorsResult && contributorsResult.error === "aborted") {
     return {
       repoInfo,
       deltaCommits,
@@ -556,10 +598,26 @@ export async function fetchRepoData(
     };
   }
 
-  // (Assignment moved to Tier 1)
+  // -------------------------------------------------------------------------
+  // Tier 2 — conditional on remaining > 2000
+  // -------------------------------------------------------------------------
+  if (rateLimit.remaining <= 2000) {
+    lastKnownRateLimitRemaining = rateLimit.remaining;
+    return {
+      repoInfo,
+      deltaCommits,
+      recentCommits,
+      fullCommits: null,
+      contributorCount: null,
+      contributors: null,
+      rateLimit,
+      tier: 1,
+    };
+  }
 
   // Stop Tier 2 early if rate limit too low
   if (rateLimit.remaining < 1000) {
+    lastKnownRateLimitRemaining = rateLimit.remaining;
     return {
       repoInfo,
       deltaCommits,
@@ -630,11 +688,26 @@ export async function fetchRepoData(
         error: "not_found",
       };
     }
+
+    if (fullResult.status === "timeout") {
+      return {
+        repoInfo,
+        deltaCommits,
+        recentCommits,
+        fullCommits: null,
+        contributorCount,
+        contributors,
+        rateLimit,
+        tier: 2,
+        error: "timeout",
+      };
+    }
   }
 
   const successResult = fullResult as { data: CommitData[]; rateLimit: RateLimitState; stopped: boolean };
   rateLimit = successResult.rateLimit;
   const fullCommits = filterCommits(successResult.data);
+  lastKnownRateLimitRemaining = rateLimit.remaining;
 
   return {
     repoInfo,
@@ -675,6 +748,7 @@ export async function fetchRepoInfo(
 
   if ("status" in result) {
     if (result.status === "aborted") return { error: "aborted" };
+    if (result.status === "timeout") return { error: "timeout", rateLimit: { remaining: 0, reset: 0, limit: 0 } };
     if (result.status === "network_error") return { error: "not_found", rateLimit: { remaining: 0, reset: 0, limit: 0 } };
     if (result.status === 403)
       return {
@@ -723,6 +797,7 @@ export async function fetchDeltaCommits(
 
   if ("status" in result) {
     if (result.status === "aborted") return { error: "aborted" };
+    if (result.status === "timeout") return { error: "timeout", rateLimit: { remaining: 0, reset: 0, limit: 0 } };
     if (result.status === "network_error") return { error: "not_found", rateLimit: { remaining: 0, reset: 0, limit: 0 } };
     if (result.status === 403)
       return {
@@ -771,6 +846,7 @@ export async function fetchContributors(
 
   if ("status" in result) {
     if (result.status === "aborted") return { error: "aborted" };
+    if (result.status === "timeout") return { error: "timeout", rateLimit: { remaining: 0, reset: 0, limit: 0 } };
     if (result.status === "network_error") return { error: "not_found", rateLimit: { remaining: 0, reset: 0, limit: 0 } };
     if (result.status === 403)
       return {
@@ -815,6 +891,7 @@ export async function fetchFullHackathonCommits(
 
   if ("status" in result) {
     if (result.status === "aborted") return { error: "aborted" };
+    if (result.status === "timeout") return { error: "timeout", rateLimit: { remaining: 0, reset: 0, limit: 0 } };
     if (result.status === 403)
       return {
         error: "rate_limited",

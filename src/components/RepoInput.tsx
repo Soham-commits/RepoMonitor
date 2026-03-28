@@ -1,11 +1,14 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { fetchRepoInfo } from "../utils/github";
 import { StarButton } from "./StarButton";
-import { Flame, CheckCircle2, XCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Flame, CheckCircle2, XCircle, AlertCircle, Loader2, ArrowLeft } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MeshGradient } from "@paper-design/shaders-react";
+import Link from "next/link";
+import Papa from "papaparse";
+import * as XLSX from "xlsx";
 
 export interface RepoInputProps {
   onStart: (repos: string[], pat: string) => void;
@@ -77,6 +80,10 @@ function parseRepoUrl(input: string): ParsedUrl {
 export function RepoInput({ onStart }: RepoInputProps) {
   const [pat, setPat] = useState("");
   const [repoText, setRepoText] = useState("");
+  const [importMessage, setImportMessage] = useState("");
+  const [importError, setImportError] = useState("");
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   
   const [status, setStatus] = useState<ValidationStatus>("idle");
   const [results, setResults] = useState<ValidationResult[]>([]);
@@ -88,6 +95,142 @@ export function RepoInput({ onStart }: RepoInputProps) {
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
   }, [repoText]);
+
+  const githubUrlRegex = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)\/?$/i;
+  const ownerRepoRegex = /^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/i;
+
+  const appendReposToTextarea = (repos: string[]) => {
+    if (repos.length === 0) return;
+    setRepoText((prev) => {
+      const prefix = prev.trim().length > 0 ? "\n" : "";
+      return `${prev}${prefix}${repos.join("\n")}`;
+    });
+  };
+
+  const extractReposFromValue = (value: unknown, collector: Set<string>) => {
+    if (value === null || value === undefined) return;
+    const text = String(value).trim();
+    if (!text) return;
+
+    const tokens = text.split(/[\s,;]+/).map((token) => token.replace(/[()\[\]{}<>"'`]+/g, "").trim()).filter(Boolean);
+    tokens.forEach((token) => {
+      const urlMatch = token.match(githubUrlRegex);
+      if (urlMatch) {
+        collector.add(`${urlMatch[1]}/${urlMatch[2]}`);
+        return;
+      }
+
+      if (token.includes("//") || token.includes("www") || token.includes(".com") || token.includes("http")) {
+        return;
+      }
+
+      if ((token.match(/\//g) || []).length !== 1) {
+        return;
+      }
+
+      const ownerRepoMatch = token.match(ownerRepoRegex);
+      if (ownerRepoMatch) {
+        collector.add(`${ownerRepoMatch[1]}/${ownerRepoMatch[2]}`);
+      }
+    });
+  };
+
+  const finalizeImport = (found: Set<string>) => {
+    const repos = Array.from(found);
+    if (repos.length === 0) {
+      setImportError("No GitHub URLs detected in this file");
+      setImportMessage("");
+      return;
+    }
+
+    appendReposToTextarea(repos);
+    setImportMessage(`Found ${repos.length} repo URLs from file`);
+    setImportError("");
+  };
+
+  const handleFileImport = async (file: File) => {
+    setImportMessage("");
+    setImportError("");
+
+    if (file.size > 5 * 1024 * 1024) {
+      setImportError("File too large");
+      return;
+    }
+
+    const lowerName = file.name.toLowerCase();
+    const isCsv = lowerName.endsWith(".csv");
+    const isXlsx = lowerName.endsWith(".xlsx");
+
+    if (!isCsv && !isXlsx) {
+      setImportError("Only .csv or .xlsx files supported");
+      return;
+    }
+
+    if (isCsv) {
+      Papa.parse(file, {
+        skipEmptyLines: true,
+        complete: (results) => {
+          const found = new Set<string>();
+          results.data.forEach((row) => {
+            if (Array.isArray(row)) {
+              row.forEach((cell) => extractReposFromValue(cell, found));
+            } else if (row && typeof row === "object") {
+              Object.values(row).forEach((cell) => extractReposFromValue(cell, found));
+            }
+          });
+          finalizeImport(found);
+        },
+        error: () => {
+          setImportError("No GitHub URLs detected in this file");
+        },
+      });
+      return;
+    }
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const found = new Set<string>();
+
+      workbook.SheetNames.forEach((sheetName) => {
+        const sheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true }) as unknown[][];
+        rows.forEach((row) => {
+          row.forEach((cell) => extractReposFromValue(cell, found));
+        });
+      });
+
+      finalizeImport(found);
+    } catch {
+      setImportError("No GitHub URLs detected in this file");
+    }
+  };
+
+  const handleFileInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      await handleFileImport(file);
+    }
+    event.target.value = "";
+  };
+
+  const handleDrop = async (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragOver(false);
+    const file = event.dataTransfer.files?.[0];
+    if (file) {
+      await handleFileImport(file);
+    }
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragOver(false);
+  };
 
   const handleValidate = async () => {
     if (rawLines.length === 0) return;
@@ -194,6 +337,14 @@ export function RepoInput({ onStart }: RepoInputProps) {
 
   return (
     <div className="min-h-screen relative overflow-x-hidden bg-black flex flex-col items-center py-12 px-6 selection:bg-cyan-500/30 font-sans">
+      {/* Back Button */}
+      <Link href="/" className="absolute top-8 left-8 z-20">
+        <button className="px-6 py-2 rounded-full bg-white/5 border border-white/10 text-white/70 text-xs font-medium hover:bg-white/10 hover:text-white transition-all flex items-center gap-2 backdrop-blur-sm group">
+          <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+          Back to Landing
+        </button>
+      </Link>
+
       {/* Background Gradient Mesh equivalent to theme */}
       <div className="fixed inset-0 z-0 pointer-events-none">
         <MeshGradient
@@ -246,17 +397,46 @@ export function RepoInput({ onStart }: RepoInputProps) {
               <label className="block text-sm font-medium text-white/80">
                 Team Repositories
               </label>
-              <span className="text-xs text-white/50 font-mono">
-                {rawLines.length} URLs detected
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-white/50 font-mono">
+                  {rawLines.length} URLs detected
+                </span>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={status === "validating"}
+                  className="px-3 py-1.5 rounded-full text-[11px] font-semibold uppercase tracking-wider border border-white/20 text-white/80 hover:text-white hover:border-cyan-400/60 hover:bg-white/5 transition-all disabled:opacity-50"
+                >
+                  Import File
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.xlsx"
+                  onChange={handleFileInputChange}
+                  className="hidden"
+                />
+              </div>
             </div>
-            <textarea
-              placeholder="Paste one GitHub repo URL per line...&#10;e.g. https://github.com/owner/repo&#10;github.com/owner/repo2&#10;owner/repo3"
-              value={repoText}
-              onChange={(e) => setRepoText(e.target.value)}
-              disabled={status === "validating"}
-              className="w-full h-64 bg-black/40 border-2 border-white/10 focus:border-cyan-400/50 rounded-2xl px-5 py-4 text-white placeholder-white/20 focus:outline-none focus:ring-0 resize-y disabled:opacity-50 transition-all font-mono text-sm leading-relaxed shadow-inner"
-            />
+            <div
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              className="relative"
+            >
+              <textarea
+                placeholder="Paste one GitHub repo URL per line...&#10;e.g. https://github.com/owner/repo&#10;github.com/owner/repo2&#10;owner/repo3"
+                value={repoText}
+                onChange={(e) => setRepoText(e.target.value)}
+                disabled={status === "validating"}
+                className={`w-full h-64 bg-black/40 border-2 rounded-2xl px-5 py-4 text-white placeholder-white/20 focus:outline-none focus:ring-0 resize-y disabled:opacity-50 transition-all font-mono text-sm leading-relaxed shadow-inner ${isDragOver ? "border-cyan-400/70" : "border-white/10 focus:border-cyan-400/50"}`}
+              />
+            </div>
+            {(importMessage || importError) && (
+              <div className={`mt-2 text-xs font-mono ${importError ? "text-red-400" : "text-cyan-300"}`}>
+                {importError || importMessage}
+              </div>
+            )}
           </div>
 
           {/* Validation Actions */}

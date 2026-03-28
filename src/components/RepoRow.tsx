@@ -11,7 +11,7 @@ interface RepoRowProps {
   isRefreshing?: boolean;
 }
 
-export type RepoStatus = "Active" | "Idle" | "Inactive" | "Error" | "Loading";
+export type RepoStatus = "Active" | "Idle" | "Inactive" | "Dead" | "Timeout" | "Error" | "Loading";
 
 export function getRepoStatusAndDetails(data?: FetchRepoDataResult): {
   status: RepoStatus;
@@ -22,6 +22,7 @@ export function getRepoStatusAndDetails(data?: FetchRepoDataResult): {
   lastCommitMessage: string | null;
 } {
   if (!data) return { status: "Loading", lastPushIso: null, commitsCount: 0, recentCommitsCount: 0, contributorsCount: null, lastCommitMessage: null };
+  if (data.error === "timeout") return { status: "Timeout", lastPushIso: null, commitsCount: 0, recentCommitsCount: 0, contributorsCount: null, lastCommitMessage: null };
   if (data.error) return { status: "Error", lastPushIso: null, commitsCount: 0, recentCommitsCount: 0, contributorsCount: null, lastCommitMessage: null };
 
   const lastPushIso = data.repoInfo?.pushed_at || null;
@@ -34,22 +35,22 @@ export function getRepoStatusAndDetails(data?: FetchRepoDataResult): {
 
   let status: RepoStatus = "Inactive";
   
-  if (lastPushIso && commitsCount > 0) {
+  if (commitsCount === 0 && status !== "Loading") {
+    status = "Dead";
+  } else if (lastPushIso) {
     const pushed = new Date(lastPushIso).getTime();
     const now = Date.now();
     const diffMins = (now - pushed) / (1000 * 60);
 
-    if (diffMins < 30) {
+    if (diffMins < 60) {
       status = "Active";
-    } else if (diffMins <= 120) {
+    } else if (diffMins <= 180) {
       status = "Idle";
     } else {
       status = "Inactive";
     }
   } else if (!lastPushIso) {
     status = "Error"; // No info available
-  } else if (commitsCount === 0) {
-    status = "Inactive";
   }
 
   return { status, lastPushIso, commitsCount, recentCommitsCount, contributorsCount, lastCommitMessage };
@@ -73,8 +74,8 @@ function formatRelativeTime(isoString: string | null): { text: string; colorClas
   else text = `${diffDays}d ago`;
 
   let colorClass = "text-red-400";
-  if (diffMins < 30) colorClass = "text-green-400";
-  else if (diffMins <= 120) colorClass = "text-yellow-400";
+  if (diffMins < 60) colorClass = "text-green-400";
+  else if (diffMins <= 180) colorClass = "text-yellow-400";
 
   return { text, colorClass };
 }
@@ -132,17 +133,13 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false }: RepoRo
       </td>
 
       {/* Last Push */}
-      <td className="py-6 px-4 align-middle whitespace-nowrap">
-        <div className="group/tooltip relative inline-flex">
-          <span className={`font-mono text-sm font-bold ${relativePush.colorClass}`}>
-            {relativePush.text}
-          </span>
-          {lastPushIso && (
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-black text-xs text-white rounded border border-white/20 opacity-0 group-hover/tooltip:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 shadow-xl">
-              {new Date(lastPushIso).toLocaleString()}
-            </div>
-          )}
-        </div>
+      <td
+        className="py-6 px-4 align-middle whitespace-nowrap"
+        title={lastPushIso ? new Date(lastPushIso).toISOString() : undefined}
+      >
+        <span className={`font-mono text-sm font-bold ${relativePush.colorClass}`}>
+          {relativePush.text}
+        </span>
       </td>
 
       {/* Hackathon Commits */}
@@ -166,18 +163,16 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false }: RepoRo
       </td>
 
       {/* Last Commit Message */}
-      <td className="py-6 px-4 align-middle min-w-[240px] max-w-[300px]">
+      <td
+        className="py-6 px-4 align-middle min-w-[240px] max-w-[300px]"
+        title={lastCommitMessage ? lastCommitMessage.replace(/^["']|["']$/g, '') : undefined}
+      >
         {status === "Loading" ? (
           <span className="text-white/20 italic text-xs">Loading...</span>
         ) : lastCommitMessage ? (
-          <div className="group/msg relative inline-block w-full">
-            <p className="text-white/60 italic text-sm truncate cursor-help hover:text-white/80 transition-colors">
-              {truncateMessage(lastCommitMessage.replace(/^["']|["']$/g, ''))}
-            </p>
-            <div className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-black text-xs text-white rounded-lg border border-white/20 opacity-0 group-hover/msg:opacity-100 pointer-events-none transition-opacity z-50 shadow-2xl max-w-xs whitespace-normal leading-relaxed">
-              {lastCommitMessage.replace(/^["']|["']$/g, '')}
-            </div>
-          </div>
+          <p className="text-white/60 italic text-sm truncate">
+            {truncateMessage(lastCommitMessage.replace(/^["']|["']$/g, ''))}
+          </p>
         ) : (
           <span className="text-red-400/50 italic text-xs">No commits</span>
         )}
@@ -189,11 +184,13 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false }: RepoRo
           ${status === 'Active' ? 'bg-green-500 text-black' : ''}
           ${status === 'Idle' ? 'bg-yellow-400 text-black' : ''}
           ${status === 'Inactive' ? 'bg-red-500 text-white' : ''}
+          ${status === 'Dead' ? 'bg-neutral-800 text-white' : ''}
+          ${status === 'Timeout' ? 'bg-orange-500 text-black' : ''}
           ${status === 'Error' ? 'bg-gray-600 text-white' : ''}
           ${status === 'Loading' ? 'bg-white/10 text-white/40 border border-white/10' : ''}
         `}>
           {status === 'Active' && <div className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />}
-          {status}
+          {status === 'Timeout' ? 'TIMEOUT' : status}
         </div>
       </td>
 

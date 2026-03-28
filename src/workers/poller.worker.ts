@@ -35,7 +35,7 @@ export type WorkerOutMessage =
 // ---------------------------------------------------------------------------
 
 const BATCH_SIZE = 10;
-const BATCH_DELAY_MS = 800;
+const BATCH_DELAY_MS = 300;
 const RATE_LIMIT_CRITICAL_THRESHOLD = 500;
 const RATE_LIMIT_WARNING_THRESHOLD = 1000;
 
@@ -90,7 +90,7 @@ async function runPoll(
 
   outer: for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
     // ⚡ Optimization: First batch fires immediately with NO delay.
-    // Only add 800ms inter-batch delay from batch 2 onwards.
+    // Only add inter-batch delay from batch 2 onwards.
     if (batchIdx > 0) {
       await delay(BATCH_DELAY_MS);
     }
@@ -102,86 +102,16 @@ async function runPoll(
     // Notify main thread which repos are about to be refreshed (for per-row indicator)
     post({ type: "BATCH_START", repos: batch });
 
-    // ⚡ Optimization: First batch runs all repos in PARALLEL.
-    // Subsequent batches run sequentially to be gentler on rate limits.
-    if (batchIdx === 0) {
-      // Fire all repos in batch 0 simultaneously
-      const promises = batch.map(async (repoStr) => {
-        if (signal.aborted) return;
+    // Fire all repos in the batch simultaneously
+    const promises = batch.map(async (repoStr) => {
+      if (signal.aborted) return;
 
-        if (rateLimitRemaining < RATE_LIMIT_CRITICAL_THRESHOLD) {
-          return; // Will be caught after Promise.all
-        }
-
-        const parsed = parseRepo(repoStr);
-        if (!parsed) return;
-
-        const { owner, repo } = parsed;
-
-        let result: FetchRepoDataResult;
-        try {
-          result = await fetchRepoData(owner, repo, pat || undefined, signal);
-        } catch (err) {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          if (errMsg.includes("network_error")) {
-            post({
-              type: "REPO_UPDATE",
-              repo: repoStr,
-              data: {
-                repoInfo: null,
-                deltaCommits: [],
-                recentCommits: [],
-                fullCommits: null,
-                contributorCount: null,
-                contributors: null,
-                rateLimit: lastRateLimitState,
-                tier: 1,
-                error: "not_found",
-              },
-            });
-            return;
-          }
-          if (signal.aborted) return;
-          return;
-        }
-
-        if (signal.aborted) return;
-
-        // Update shared rate limit tracking (slightly racy but fine for thresholds)
-        rateLimitRemaining = Math.min(rateLimitRemaining, result.rateLimit.remaining);
-        lastRateLimitState = result.rateLimit;
-
-        post({ type: "REPO_UPDATE", repo: repoStr, data: result });
-      });
-
-      await Promise.all(promises);
-
-      // Check thresholds after parallel batch completes
       if (rateLimitRemaining < RATE_LIMIT_CRITICAL_THRESHOLD) {
-        post({ type: "RATE_LIMIT_CRITICAL" });
-        isPolling = false;
-        return;
-      }
-      if (rateLimitRemaining < RATE_LIMIT_WARNING_THRESHOLD) {
-        post({ type: "RATE_LIMIT_WARNING" });
-      }
-
-      continue; // Move to next batch
-    }
-
-    // Sequential processing for batches 2+
-    for (const repoStr of batch) {
-      if (signal.aborted) break outer;
-
-      // Hard stop if rate limit is critically low
-      if (rateLimitRemaining < RATE_LIMIT_CRITICAL_THRESHOLD) {
-        post({ type: "RATE_LIMIT_CRITICAL" });
-        isPolling = false;
-        return;
+        return; // Will be caught after Promise.all
       }
 
       const parsed = parseRepo(repoStr);
-      if (!parsed) continue;
+      if (!parsed) return;
 
       const { owner, repo } = parsed;
 
@@ -189,10 +119,8 @@ async function runPoll(
       try {
         result = await fetchRepoData(owner, repo, pat || undefined, signal);
       } catch (err) {
-        // network_error — skip this repo, do not crash the poll loop
         const errMsg = err instanceof Error ? err.message : String(err);
         if (errMsg.includes("network_error")) {
-          // Post a synthetic result so the hook knows this repo failed
           post({
             type: "REPO_UPDATE",
             repo: repoStr,
@@ -208,32 +136,31 @@ async function runPoll(
               error: "not_found",
             },
           });
-          continue;
+          return;
         }
-        // Unknown error — skip silently if aborted
-        if (signal.aborted) break outer;
-        continue;
-      }
-
-      if (signal.aborted) break outer;
-
-      // Update our local rate limit tracking
-      rateLimitRemaining = result.rateLimit.remaining;
-      lastRateLimitState = result.rateLimit;
-
-      // Emit per-repo update
-      post({ type: "REPO_UPDATE", repo: repoStr, data: result });
-
-      // Check thresholds after each repo
-      if (rateLimitRemaining < RATE_LIMIT_CRITICAL_THRESHOLD) {
-        post({ type: "RATE_LIMIT_CRITICAL" });
-        isPolling = false;
+        if (signal.aborted) return;
         return;
       }
 
-      if (rateLimitRemaining < RATE_LIMIT_WARNING_THRESHOLD) {
-        post({ type: "RATE_LIMIT_WARNING" });
-      }
+      if (signal.aborted) return;
+
+      // Update shared rate limit tracking (slightly racy but fine for thresholds)
+      rateLimitRemaining = Math.min(rateLimitRemaining, result.rateLimit.remaining);
+      lastRateLimitState = result.rateLimit;
+
+      post({ type: "REPO_UPDATE", repo: repoStr, data: result });
+    });
+
+    await Promise.all(promises);
+
+    // Check thresholds after parallel batch completes
+    if (rateLimitRemaining < RATE_LIMIT_CRITICAL_THRESHOLD) {
+      post({ type: "RATE_LIMIT_CRITICAL" });
+      isPolling = false;
+      return;
+    }
+    if (rateLimitRemaining < RATE_LIMIT_WARNING_THRESHOLD) {
+      post({ type: "RATE_LIMIT_WARNING" });
     }
   }
 

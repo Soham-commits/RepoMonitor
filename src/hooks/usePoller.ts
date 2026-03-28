@@ -85,9 +85,9 @@ function prioritizeRepos(
     }
 
     const diffMins = (Date.now() - new Date(pushed).getTime()) / (1000 * 60);
-    if (diffMins < 30) {
+    if (diffMins < 60) {
       active.push(repo);
-    } else if (diffMins <= 120) {
+    } else if (diffMins <= 180) {
       idle.push(repo);
     } else {
       inactive.push(repo);

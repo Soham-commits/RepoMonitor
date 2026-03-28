@@ -4,8 +4,10 @@ import React, { useState, useMemo } from "react";
 import { usePoller } from "../hooks/usePoller";
 import { RepoRow, getRepoStatusAndDetails, RepoStatus } from "./RepoRow";
 import { MeshGradient } from "@paper-design/shaders-react";
-import { Flame, Search, Filter, ArrowUpDown, RefreshCw, Download, AlertTriangle, WifiOff } from "lucide-react";
+import { Flame, Search, Filter, ArrowUpDown, RefreshCw, Download, AlertTriangle, WifiOff, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
+import { auth } from "../utils/auth";
 
 export interface DashboardProps {
   repos: string[];
@@ -131,7 +133,22 @@ export function Dashboard({ repos, pat }: DashboardProps) {
 
   return (
     <div className="min-h-screen relative bg-black flex justify-center py-10 px-6 font-sans">
+      {/* Sign Out Button - Bottom Left */}
+      <div className="fixed bottom-8 left-8 z-30">
+        <button 
+          onClick={() => {
+            auth.logout();
+            window.location.href = "/";
+          }}
+          className="px-6 py-2 rounded-full bg-white/5 border border-white/10 text-white/70 text-xs font-medium hover:bg-white/10 hover:text-white transition-all flex items-center gap-2 backdrop-blur-sm group cursor-pointer"
+        >
+          <LogOut className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+          Sign Out
+        </button>
+      </div>
+
       {/* Background Gradient Mesh */}
+
       <div className="fixed inset-0 z-0 pointer-events-none">
         <MeshGradient
           className="absolute inset-0 w-full h-full"

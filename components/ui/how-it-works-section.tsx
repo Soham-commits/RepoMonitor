@@ -4,7 +4,7 @@ import { Key, Link as LinkIcon, Play } from "lucide-react"
 
 export default function HowItWorksSection() {
   return (
-    <section id="how-it-works" className="relative z-20 max-w-7xl mx-auto px-6 py-32 border-t border-white/10 bg-black">
+    <section id="how-it-works" className="relative z-20 max-w-7xl mx-auto px-6 py-32">
       <div className="text-center mb-16">
         <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">Up and Running in 3 Steps</h2>
       </div>
@@ -16,7 +16,7 @@ export default function HowItWorksSection() {
         ].map((step, i) => (
           <motion.div
             key={i}
-            className="relative p-8 rounded-3xl bg-black/40 backdrop-blur-md border border-white/10 overflow-hidden group"
+            className="relative p-8 rounded-3xl bg-white/5 backdrop-blur-xl border border-white/10 overflow-hidden group hover:bg-white/10 transition-all"
             initial={{ opacity: 0, x: -20 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
