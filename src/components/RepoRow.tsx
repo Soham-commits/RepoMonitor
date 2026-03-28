@@ -9,6 +9,7 @@ interface RepoRowProps {
   repoKey: string;
   data?: FetchRepoDataResult;
   isRefreshing?: boolean;
+  onViewCommits?: (repoKey: string) => void;
 }
 
 export type RepoStatus = "Active" | "Idle" | "Inactive" | "Dead" | "Timeout" | "Error" | "Loading";
@@ -80,7 +81,7 @@ function formatRelativeTime(isoString: string | null): { text: string; colorClas
   return { text, colorClass };
 }
 
-function RepoRowComponent({ index, repoKey, data, isRefreshing = false }: RepoRowProps) {
+function RepoRowComponent({ index, repoKey, data, isRefreshing = false, onViewCommits }: RepoRowProps) {
   const { status, lastPushIso, commitsCount, recentCommitsCount, contributorsCount, lastCommitMessage } = getRepoStatusAndDetails(data);
 
   // Flags as solid badges
@@ -90,9 +91,11 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false }: RepoRo
 
   if (isPrivateFlag) {
     flags.push({ text: "PRIVATE", color: "bg-gray-500 text-white" });
-  } else if (isTimeoutFlag) {
-    flags.push({ text: "TIMEOUT", color: "bg-orange-500 text-black" });
   } else {
+    if (isTimeoutFlag) {
+      flags.push({ text: "TIMEOUT", color: "bg-orange-500 text-black" });
+    }
+
     if (commitsCount === 0 && status !== "Loading") {
       flags.push({ text: "NO COMMITS", color: "bg-red-500 text-white" });
     }
@@ -106,123 +109,127 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false }: RepoRo
   const statusText = isPrivateRow ? "PRIVATE" : status === "Timeout" ? "TIMEOUT" : status;
 
   const relativePush = formatRelativeTime(lastPushIso);
-  const truncateMessage = (msg: string | null) => {
-    if (!msg) return "";
-    const firstLine = msg.split("\n")[0];
-    return firstLine.length > 40 ? firstLine.substring(0, 40) + "..." : firstLine;
-  };
 
   return (
     <tr className={`border-b border-white/5 hover:bg-white/[0.05] transition-colors group ${index % 2 !== 0 ? 'bg-white/[0.02]' : ''}`}>
       {/* Index + Refresh Indicator */}
-      <td className="py-6 px-4 text-white/40 font-mono text-xs align-middle whitespace-nowrap">
-        <div className="flex items-center gap-1.5">
+      <td className="py-6 px-2 text-white/40 font-mono text-[10px] align-middle whitespace-nowrap text-center">
+        <div className="flex items-center justify-center gap-1">
           {isRefreshing && (
-            <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_6px_rgba(6,182,212,0.6)]" />
+            <div className="w-1 h-1 rounded-full bg-cyan-400 animate-pulse" />
           )}
-          <span>{index + 1}</span>
+          <span className="opacity-50">{index + 1}</span>
         </div>
       </td>
 
       {/* Repository */}
-      <td className="py-6 px-4 align-middle min-w-[200px]">
+      <td className="py-6 px-4 align-middle">
         <a 
           href={`https://github.com/${repoKey}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-white font-semibold hover:underline transition-all inline-flex items-center gap-2 group/link text-sm"
+          className="text-white font-bold hover:text-cyan-400 transition-all inline-flex items-center gap-1.5 text-sm tracking-tight break-all"
         >
           {repoKey}
-          <ExternalLink className="w-3 h-3 opacity-0 group-hover/link:opacity-100 transition-opacity" />
+          <ExternalLink className="w-3 h-3 text-cyan-400" />
         </a>
       </td>
 
-      {/* Last Push */}
+      {/* Last Activity */}
       <td
-        className="py-6 px-4 align-middle whitespace-nowrap"
+        className="py-6 px-3 align-middle whitespace-nowrap"
         title={!isPrivateRow && lastPushIso ? new Date(lastPushIso).toISOString() : undefined}
       >
         {isPrivateRow ? (
-          <span className="text-white/20">—</span>
+          <span className="text-white/10">—</span>
         ) : (
-          <span className={`font-mono text-sm font-bold ${relativePush.colorClass}`}>
+          <span className={`font-mono text-xs font-bold ${relativePush.colorClass}`}>
             {relativePush.text}
           </span>
         )}
       </td>
 
-      {/* Hackathon Commits */}
-      <td className="py-6 px-4 align-middle whitespace-nowrap text-center">
+      {/* Commit Volume */}
+      <td className="py-6 px-2 align-middle whitespace-nowrap text-center">
         {isPrivateRow ? (
-          <span className="text-white/20">—</span>
+          <span className="text-white/10">—</span>
         ) : (
-          <span className={`text-xl font-black font-mono ${commitsCount > 0 ? "text-green-400" : "text-red-400"}`}>
+          <span className={`text-lg font-black font-mono tracking-tighter ${commitsCount > 0 ? "text-green-400" : "text-red-400"}`}>
             {status === "Loading" ? "-" : commitsCount}
           </span>
         )}
       </td>
 
-      {/* Recent Activity (30d) */}
-      <td className="py-6 px-4 align-middle whitespace-nowrap">
+      {/* 30D Pulse */}
+      <td className="py-6 px-2 align-middle whitespace-nowrap text-center">
         {isPrivateRow ? (
-          <div className="text-center text-white/20">—</div>
+          <span className="text-white/10">—</span>
         ) : (
           <div className="flex flex-col items-center">
-            <div className="text-white font-bold font-mono">{status === "Loading" ? "—" : recentCommitsCount}</div>
-            <div className="text-[10px] text-white/40 uppercase font-bold tracking-tighter">30d activity</div>
+            <span className="text-white font-black font-mono text-base">{status === "Loading" ? "—" : recentCommitsCount}</span>
           </div>
         )}
       </td>
 
-      {/* Contributors */}
-      <td className="py-6 px-4 align-middle whitespace-nowrap text-center text-white font-mono font-medium">
-        {isPrivateRow ? "—" : (contributorsCount !== null ? contributorsCount : (status === "Error" ? "?" : "—"))}
+      {/* Users */}
+      <td className="py-6 px-2 align-middle whitespace-nowrap text-center text-white font-mono font-bold text-base">
+        {isPrivateRow ? <span className="text-white/10">—</span> : (contributorsCount !== null ? contributorsCount : (status === "Error" ? "?" : "—"))}
       </td>
 
-      {/* Last Commit Message */}
+      {/* Last Commit Message (Limited to 2 lines) */}
       <td
-        className="py-6 px-4 align-middle min-w-[240px] max-w-[300px]"
+        className="py-6 px-5 align-middle"
         title={!isPrivateRow && lastCommitMessage ? lastCommitMessage.replace(/^["']|["']$/g, '') : undefined}
       >
         {isPrivateRow ? (
-          <span className="text-white/20 italic text-xs">—</span>
+          <span className="text-white/10 italic text-[10px]">—</span>
         ) : status === "Loading" ? (
-          <span className="text-white/20 italic text-xs">Loading...</span>
+          <span className="text-white/20 italic text-[10px] animate-pulse">Scanning...</span>
         ) : lastCommitMessage ? (
-          <p className="text-white/60 italic text-sm truncate">
-            {truncateMessage(lastCommitMessage.replace(/^["']|["']$/g, ''))}
+          <p className="text-white/80 italic text-xs font-light leading-relaxed whitespace-normal break-words line-clamp-2">
+            {lastCommitMessage.replace(/^["']|["']$/g, '')}
           </p>
         ) : (
-          <span className="text-red-400/50 italic text-xs">No commits</span>
+          <span className="text-red-400/30 italic text-[10px] tracking-wide uppercase font-light">No logs</span>
         )}
       </td>
 
-      {/* Status (Solid Badges) */}
-      <td className="py-6 px-4 align-middle whitespace-nowrap">
-        <div className={`px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-widest shadow-lg flex items-center justify-center gap-1.5
-          ${isPrivateRow ? 'bg-gray-600 text-white' : ''}
+      {/* Status */}
+      <td className="py-6 px-3 align-middle whitespace-nowrap">
+        <div className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5
+          ${isPrivateRow ? 'bg-gray-800 text-white/50 border border-white/5' : ''}
           ${status === 'Active' ? 'bg-green-500 text-black' : ''}
           ${status === 'Idle' ? 'bg-yellow-400 text-black' : ''}
           ${status === 'Inactive' ? 'bg-red-500 text-white' : ''}
-          ${status === 'Dead' ? 'bg-neutral-800 text-white' : ''}
+          ${status === 'Dead' ? 'bg-neutral-900 text-white/40 border border-white/5' : ''}
           ${status === 'Timeout' ? 'bg-orange-500 text-black' : ''}
-          ${status === 'Error' ? 'bg-gray-600 text-white' : ''}
-          ${status === 'Loading' ? 'bg-white/10 text-white/40 border border-white/10' : ''}
+          ${status === 'Error' ? 'bg-red-900/50 text-red-200 border border-red-500/30' : ''}
+          ${status === 'Loading' ? 'bg-white/5 text-white/20 border border-white/10' : ''}
         `}>
-          {status === 'Active' && <div className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />}
           {statusText}
         </div>
       </td>
 
-      {/* Flags (Solid Badge Stack) */}
-      <td className="py-6 px-4 align-middle whitespace-nowrap">
-        <div className="flex flex-col gap-1.5 min-w-[80px]">
-          {flags.length === 0 && status !== 'Loading' && <span className="text-white/10 text-center">-</span>}
+      {/* History Icon */}
+      <td className="py-6 px-2 align-middle whitespace-nowrap text-center">
+        <button
+          type="button"
+          onClick={() => onViewCommits?.(repoKey)}
+          className="inline-flex items-center justify-center w-8 h-8 rounded-xl border border-white/10 text-white/30 hover:text-cyan-400 hover:border-cyan-400/60 transition-all"
+        >
+          <MessageSquare className="w-4 h-4" />
+        </button>
+      </td>
+
+      {/* Flags */}
+      <td className="py-6 px-4 align-middle">
+        <div className="flex flex-wrap gap-1 min-w-[80px]">
           {flags.map((flag, i) => (
-             <div key={i} className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter ${flag.color}`}>
+             <div key={i} className={`flex items-center justify-center px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter border ${flag.color} border-black/10`}>
                <span>{flag.text}</span>
              </div>
           ))}
+          {flags.length === 0 && status !== 'Loading' && <span className="text-white/10 font-mono text-[10px]">—</span>}
         </div>
       </td>
     </tr>

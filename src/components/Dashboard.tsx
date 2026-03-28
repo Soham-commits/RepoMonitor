@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { usePoller } from "../hooks/usePoller";
 import { RepoRow, getRepoStatusAndDetails, RepoStatus } from "./RepoRow";
+import { CommitModal } from "./CommitModal";
 import { MeshGradient } from "@paper-design/shaders-react";
 import { Flame, Search, Filter, ArrowUpDown, RefreshCw, Download, AlertTriangle, WifiOff, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -28,6 +29,7 @@ export function Dashboard({ repos, pat }: DashboardProps) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"All" | RepoStatus>("All");
   const [sortKey, setSortKey] = useState<"Name" | "Hackathon Commits" | "Last Push" | "Contributors">("Name");
+  const [modalRepoKey, setModalRepoKey] = useState<string | null>(null);
 
   // Format countdown mm:ss
   const formatCountdown = (seconds: number) => {
@@ -163,15 +165,15 @@ export function Dashboard({ repos, pat }: DashboardProps) {
         />
       </div>
 
-      <div className="z-10 w-full max-w-7xl flex flex-col gap-6">
+      <div className="z-10 w-full max-w-[1600px] flex flex-col gap-8">
         
         {/* Header Title */}
-        <div className="flex items-center gap-3">
-          <Flame className="w-6 h-6 text-cyan-400" />
-          <h1 className="text-2xl font-bold text-white tracking-tight">Monitor Dashboard</h1>
+        <div className="flex items-center gap-4">
+          <Flame className="w-8 h-8 text-cyan-400" />
+          <h1 className="text-3xl font-black text-white tracking-tighter uppercase">Intelligence Dashboard</h1>
           
-          <div className="ml-auto text-sm text-white/50 space-y-1">
-             <p className="text-right">API Limits: {rateLimitState.remaining} / {rateLimitState.limit}</p>
+          <div className="ml-auto text-sm text-white/50 space-y-1 bg-white/5 px-4 py-2 rounded-2xl border border-white/10 backdrop-blur-sm">
+             <p className="text-right font-mono uppercase tracking-widest text-[10px]">API STATUS: <span className="text-cyan-400">{rateLimitState.remaining}</span> / {rateLimitState.limit}</p>
           </div>
         </div>
 
@@ -313,19 +315,20 @@ export function Dashboard({ repos, pat }: DashboardProps) {
         </div>
 
         {/* Table Container */}
-        <div className="w-full bg-black/40 border border-white/10 rounded-3xl overflow-hidden backdrop-blur-md shadow-2xl overflow-x-auto custom-scrollbar">
-           <table className="w-full text-left border-collapse">
+          <div className="w-full bg-black/40 border border-white/10 rounded-[2rem] overflow-hidden backdrop-blur-md shadow-2xl overflow-x-auto custom-scrollbar">
+            <table className="w-full text-left border-collapse table-fixed min-w-[1400px]">
              <thead>
-               <tr className="bg-white/5 border-b border-white/10">
-                 <th className="py-5 px-4 font-black text-white text-[10px] uppercase tracking-[0.2em]">#</th>
-                 <th className="py-5 px-4 font-black text-white text-[10px] uppercase tracking-[0.2em]">Repository</th>
-                 <th className="py-5 px-4 font-black text-white text-[10px] uppercase tracking-[0.2em]">Last Push</th>
-                 <th className="py-5 px-4 font-black text-white text-[10px] uppercase tracking-[0.2em] text-center">Hackathon Commits</th>
-                 <th className="py-5 px-4 font-black text-white text-[10px] uppercase tracking-[0.2em] text-center">Recent Activity</th>
-                 <th className="py-5 px-4 font-black text-white text-[10px] uppercase tracking-[0.2em] text-center">Contributors</th>
-                 <th className="py-5 px-4 font-black text-white text-[10px] uppercase tracking-[0.2em]">Last Commit Message</th>
-                 <th className="py-5 px-4 font-black text-white text-[10px] uppercase tracking-[0.2em] text-center">Status</th>
-                 <th className="py-5 px-4 font-black text-white text-[10px] uppercase tracking-[0.2em]">Flags</th>
+               <tr className="bg-white/5 border-b border-white/10 text-[10px] uppercase tracking-wider">
+                 <th className="py-5 px-2 font-black text-white/40 text-center w-12">#</th>
+                 <th className="py-5 px-4 font-black text-white w-48">Repository</th>
+                 <th className="py-5 px-3 font-black text-white w-28">Last Push</th>
+                 <th className="py-5 px-2 font-black text-white text-center w-24">Hackathon</th>
+                 <th className="py-5 px-2 font-black text-white text-center w-24">30D Pulse</th>
+                 <th className="py-5 px-2 font-black text-white text-center w-20">Users</th>
+                 <th className="py-5 px-5 font-black text-white w-auto">Last Commit Message</th>
+                 <th className="py-5 px-3 font-black text-white text-center w-32">Status</th>
+                 <th className="py-5 px-2 font-black text-white text-center w-16">Log</th>
+                 <th className="py-5 px-4 font-black text-white w-32">Flags</th>
                </tr>
              </thead>
              <tbody>
@@ -337,11 +340,12 @@ export function Dashboard({ repos, pat }: DashboardProps) {
                      repoKey={item.repoKey}
                      data={item.data}
                      isRefreshing={refreshingRepos.has(item.repoKey)}
+                     onViewCommits={setModalRepoKey}
                    />
                  ))
                ) : (
                  <tr>
-                   <td colSpan={9} className="py-12 text-center text-white/40 italic">
+                  <td colSpan={10} className="py-12 text-center text-white/40 italic">
                      No teams found matching your filters.
                    </td>
                  </tr>
@@ -350,6 +354,14 @@ export function Dashboard({ repos, pat }: DashboardProps) {
            </table>
         </div>
       </div>
+
+      {modalRepoKey && (
+        <CommitModal
+          repoKey={modalRepoKey}
+          pat={pat}
+          onClose={() => setModalRepoKey(null)}
+        />
+      )}
       
       <style dangerouslySetInnerHTML={{__html: `
         .custom-scrollbar::-webkit-scrollbar {
