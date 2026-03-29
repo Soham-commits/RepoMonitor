@@ -615,7 +615,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Navbar */}
-      <nav className="z-20 w-full px-8 py-6 flex items-center justify-between backdrop-blur-md bg-black/20 sticky top-0">
+      <nav className="z-20 w-full px-8 py-6 flex items-center justify-between bg-transparent sticky top-0">
         <div className="flex items-center gap-3">
           <Flame className="w-8 h-8 text-cyan-400" />
           <span className="text-xl font-black text-white tracking-tighter uppercase">
