@@ -185,14 +185,14 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false, onViewCo
         )}
       </td>
 
-      {/* Users */}
+      {/* Contributor */}
       <td className="py-6 px-2 align-middle whitespace-nowrap text-center text-white font-mono font-bold text-base">
         {isPrivateRow ? <span className="text-white/10">—</span> : (contributorsCount !== null ? contributorsCount : (status === "Error" ? "?" : "—"))}
       </td>
 
       {/* Last Commit Message (Limited to 2 lines) */}
       <td
-        className="py-6 px-5 align-middle"
+        className="py-6 px-2 align-middle"
         title={!isPrivateRow && lastCommitMessage ? lastCommitMessage.replace(/^["']|["']$/g, '') : undefined}
       >
         {isPrivateRow ? (

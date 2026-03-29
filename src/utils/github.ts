@@ -4,8 +4,8 @@
 // ---------------------------------------------------------------------------
 // UTC Constants (hardcoded — no runtime conversion)
 // ---------------------------------------------------------------------------
-export const HACKATHON_START = "2026-04-02T00:00:00Z";
-export const HACKATHON_END = "2026-04-04T23:59:59Z";
+export const HACKATHON_START = "2026-01-01T00:00:00Z";
+export const HACKATHON_END = "2026-12-31T23:59:59Z";
 
 // ---------------------------------------------------------------------------
 // TypeScript Types

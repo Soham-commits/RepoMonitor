@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Loader2, X } from "lucide-react";
-import { HACKATHON_END, HACKATHON_START } from "../utils/github";
 
 interface CommitModalProps {
   repoKey: string;
@@ -25,8 +24,6 @@ interface CommitItem {
   } | null;
 }
 
-type CommitFilter = "hackathon" | "all";
-
 type LoadState = "idle" | "loading" | "error" | "done";
 
 function formatRelativeTime(isoString: string): string {
@@ -44,14 +41,10 @@ function formatRelativeTime(isoString: string): string {
 }
 
 export function CommitModal({ repoKey, pat, onClose }: CommitModalProps) {
-  const [filter, setFilter] = useState<CommitFilter>("hackathon");
   const [state, setState] = useState<LoadState>("idle");
   const [commits, setCommits] = useState<CommitItem[]>([]);
 
   const [owner, repo] = useMemo(() => repoKey.split("/"), [repoKey]);
-
-  const windowStart = useMemo(() => new Date(HACKATHON_START).getTime(), []);
-  const windowEnd = useMemo(() => new Date(HACKATHON_END).getTime(), []);
 
   useEffect(() => {
     let isMounted = true;
@@ -64,9 +57,7 @@ export function CommitModal({ repoKey, pat, onClose }: CommitModalProps) {
       const all: CommitItem[] = [];
       const maxPages = 3;
       const baseUrl = `https://api.github.com/repos/${owner}/${repo}/commits`;
-      const params = filter === "hackathon"
-        ? `?since=${encodeURIComponent(HACKATHON_START)}&until=${encodeURIComponent(HACKATHON_END)}&per_page=100`
-        : "?per_page=100";
+      const params = "?per_page=100";
 
       const headers: Record<string, string> = {
         Accept: "application/vnd.github+json",
@@ -103,11 +94,9 @@ export function CommitModal({ repoKey, pat, onClose }: CommitModalProps) {
       isMounted = false;
       controller.abort();
     };
-  }, [filter, owner, repo, pat]);
+  }, [owner, repo, pat]);
 
-  const headerCountLabel = filter === "hackathon"
-    ? `${commits.length} commits in hackathon window`
-    : `${commits.length} commits total`;
+  const headerCountLabel = `${commits.length} commits total`;
 
   return (
     <div
@@ -143,31 +132,6 @@ export function CommitModal({ repoKey, pat, onClose }: CommitModalProps) {
           </button>
         </div>
 
-        <div className="flex items-center gap-3 px-8 py-4 border-b border-white/10 bg-white/[0.02]">
-          <button
-            type="button"
-            onClick={() => setFilter("hackathon")}
-            className={`px-4 py-2 rounded-full text-[11px] font-bold uppercase tracking-wider border transition-all ${
-              filter === "hackathon"
-                ? "bg-gradient-to-r from-cyan-500/20 to-orange-500/20 border-cyan-400/40 text-cyan-100 shadow-[0_0_15px_rgba(6,182,212,0.1)]"
-                : "bg-black/20 border-white/5 text-white/40 hover:text-white hover:border-white/20"
-            }`}
-          >
-            Hackathon Window
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter("all")}
-            className={`px-4 py-2 rounded-full text-[11px] font-bold uppercase tracking-wider border transition-all ${
-              filter === "all"
-                ? "bg-gradient-to-r from-cyan-500/20 to-orange-500/20 border-cyan-400/40 text-cyan-100 shadow-[0_0_15px_rgba(6,182,212,0.1)]"
-                : "bg-black/20 border-white/5 text-white/40 hover:text-white hover:border-white/20"
-            }`}
-          >
-            Full History
-          </button>
-        </div>
-
         <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4 custom-scrollbar">
           {state === "loading" && (
             <div className="flex flex-col items-center justify-center gap-4 text-white/40 py-20">
@@ -187,14 +151,12 @@ export function CommitModal({ repoKey, pat, onClose }: CommitModalProps) {
 
           {state === "done" && commits.length === 0 && (
             <div className="text-center text-white/30 py-20 italic font-light tracking-wide">
-              No activity detected in this window
+              No commit activity found for this repository
             </div>
           )}
 
           {state === "done" && commits.map((commit) => {
             const commitDate = commit.commit.author.date;
-            const timestamp = new Date(commitDate).getTime();
-            const inWindow = timestamp >= windowStart && timestamp <= windowEnd;
             const authorLogin = commit.author?.login;
             const authorName = authorLogin || commit.commit.author.name || "Unknown";
             const avatarUrl = authorLogin
@@ -206,7 +168,7 @@ export function CommitModal({ repoKey, pat, onClose }: CommitModalProps) {
                 key={commit.sha}
                 className="flex gap-4 p-4 rounded-2xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/10 transition-all group/item shadow-sm"
               >
-                <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 shadow-sm ${inWindow ? "bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.4)]" : "bg-white/10"}`} />
+                <div className="mt-1.5 w-2 h-2 rounded-full shrink-0 shadow-sm bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.4)]" />
                 <div className="flex-1 min-w-0">
                   <div className="text-white/90 text-sm leading-relaxed font-light">
                     {commit.commit.message}

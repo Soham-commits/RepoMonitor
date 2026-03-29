@@ -338,9 +338,9 @@ export function Dashboard({ repos, pat }: DashboardProps) {
                  <th className="py-5 px-4 font-black text-white w-48">Repository</th>
                  <th className="py-5 px-3 font-black text-white w-28">Last Push</th>
                  <th className="py-5 px-2 font-black text-white text-center w-24">Hackathon</th>
-                 <th className="py-5 px-2 font-black text-white text-center w-24">Activity</th>
-                 <th className="py-5 px-2 font-black text-white text-center w-20">Users</th>
-                 <th className="py-5 px-5 font-black text-white w-auto">Last Commit Message</th>
+                 <th className="py-5 px-2 font-black text-white text-center w-28 whitespace-nowrap">Commit Count</th>
+                 <th className="py-5 px-2 font-black text-white text-center w-28 whitespace-nowrap">Contributor</th>
+                 <th className="py-5 px-2 font-black text-white w-auto">Last Commit Message</th>
                  <th className="py-5 px-3 font-black text-white text-center w-32">Status</th>
                  <th className="py-5 px-2 font-black text-white text-center w-32">Commit History</th>
                  <th className="py-5 px-4 font-black text-white w-32">Flags</th>
