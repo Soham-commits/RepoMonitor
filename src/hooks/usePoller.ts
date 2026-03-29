@@ -3,6 +3,7 @@
 // Pure logic — no UI.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getRateLimitState } from "../utils/github";
 import type { FetchRepoDataResult, RateLimitState } from "../utils/github";
 import type {
   WorkerInMessage,
@@ -23,6 +24,7 @@ export interface PollerConfig {
 export interface PollerState {
   repoStates: Map<string, FetchRepoDataResult>;
   rateLimitState: RateLimitState;
+  hasFreshRateLimit: boolean;
   pollStatus: PollStatus;
   lastPollTime: Date | null;
   nextPollIn: number; // seconds countdown (0–480)
@@ -31,6 +33,7 @@ export interface PollerState {
 
 export interface PollerActions {
   triggerManualRefresh: () => void;
+  retryNow: () => void;
   startPolling: (config: PollerConfig) => void;
   stopPolling: () => void;
 }
@@ -123,10 +126,20 @@ export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
     reset: 0,
     limit: 5000,
   });
+  const [hasFreshRateLimit, setHasFreshRateLimit] = useState(false);
   const [pollStatus, setPollStatus] = useState<PollStatus>("idle");
   const [lastPollTime, setLastPollTime] = useState<Date | null>(null);
   const [nextPollIn, setNextPollIn] = useState<number>(POLL_INTERVAL_SECONDS);
   const [refreshingRepos, setRefreshingRepos] = useState<Set<string>>(new Set());
+
+  const rateLimitRef = useRef<RateLimitState>({
+    remaining: 5000,
+    reset: 0,
+    limit: 5000,
+  });
+  useEffect(() => {
+    rateLimitRef.current = rateLimitState;
+  }, [rateLimitState]);
 
   // ---- Countdown timer ref ----
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -236,6 +249,32 @@ export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
     });
   }, [rateLimitState.remaining]);
 
+  const recoverFromRateLimitIfNeeded = useCallback(
+    async (runImmediatePoll = false) => {
+      const pat = configRef.current.pat;
+      const latest = await getRateLimitState(pat);
+      if (!latest) return;
+
+      setRateLimitState(latest);
+      setHasFreshRateLimit(true);
+
+      if (latest.remaining > 1000) {
+        pollingLockRef.current = false;
+        setPollStatus("idle");
+        setRefreshingRepos(new Set());
+        resetCountdown();
+        clearCountdown();
+
+        if (runImmediatePoll) {
+          dispatchPoll();
+        } else {
+          startCountdown(dispatchPoll);
+        }
+      }
+    },
+    [dispatchPoll]
+  );
+
   // ---------------------------------------------------------------------------
   // Worker message handler
   // ---------------------------------------------------------------------------
@@ -265,6 +304,7 @@ export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
           // Mirror rate limit from the latest data payload
           if (data.rateLimit) {
             setRateLimitState(data.rateLimit);
+            setHasFreshRateLimit(true);
           }
           break;
         }
@@ -282,7 +322,11 @@ export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
         case "POLL_COMPLETE": {
           pollingLockRef.current = false;
           setLastPollTime(new Date(msg.timestamp));
+
+          const prevRateLimit = rateLimitRef.current;
+          const nextRateLimit = msg.rateLimitState;
           setRateLimitState(msg.rateLimitState);
+          setHasFreshRateLimit(true);
 
           // Clear all refreshing indicators
           setRefreshingRepos(new Set());
@@ -293,6 +337,17 @@ export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
             if (prev === "degraded") return "degraded";
             return "idle";
           });
+
+          const recoveredAfterReset =
+            prevRateLimit.remaining < 500 && nextRateLimit.remaining > 4000;
+
+          if (recoveredAfterReset) {
+            setPollStatus("idle");
+            resetCountdown();
+            clearCountdown();
+            startCountdown(dispatchPoll);
+            break;
+          }
 
           startCountdown(dispatchPoll);
           break;
@@ -339,6 +394,7 @@ export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
 
     // Trigger first poll immediately
     dispatchPoll();
+    void recoverFromRateLimitIfNeeded(false);
 
     return () => {
       // Cleanup on unmount
@@ -348,6 +404,7 @@ export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
       workerRef.current = null;
       pollingLockRef.current = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -377,6 +434,10 @@ export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
     // Kick off immediately — NO cache clearing, NO state resetting
     dispatchPoll();
   }, [dispatchPoll]);
+
+  const retryNow = useCallback(() => {
+    void recoverFromRateLimitIfNeeded(true);
+  }, [recoverFromRateLimitIfNeeded]);
 
   /**
    * Start (or restart) polling with a new config.
@@ -419,11 +480,13 @@ export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
   return {
     repoStates,
     rateLimitState,
+    hasFreshRateLimit,
     pollStatus,
     lastPollTime,
     nextPollIn,
     refreshingRepos,
     triggerManualRefresh,
+    retryNow,
     startPolling,
     stopPolling,
   };

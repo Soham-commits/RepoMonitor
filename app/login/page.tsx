@@ -6,12 +6,15 @@ import { MeshGradient } from "@paper-design/shaders-react";
 import { Flame, ArrowLeft, Loader2, User, Lock, Eye, EyeOff } from "lucide-react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { auth } from "@/src/utils/auth";
 
-const ADMIN_USERNAME = "ignisia-admin";
-const ADMIN_PASSWORD = "ignisia@2026";
+const LAST_LOGIN_KEY = "repomonitor_last_login";
 
 export default function LoginPage() {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem(LAST_LOGIN_KEY) || "";
+  });
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -24,11 +27,9 @@ export default function LoginPage() {
     setError("");
 
     try {
-      if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-        router.push("/setup");
-      } else {
-        throw new Error("Invalid username or password");
-      }
+      auth.login(email, password);
+      localStorage.setItem(LAST_LOGIN_KEY, email);
+      router.push("/setup");
     } catch (err: any) {
       setError(err.message || "Invalid username or password");
     } finally {
@@ -68,7 +69,7 @@ export default function LoginPage() {
         <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight mb-2">
           Sign In
         </h1>
-        <p className="text-white/60 font-light text-sm">Welcome back to RepoMonitor Intelligence</p>
+        <p className="text-white/60 font-light text-sm">Welcome back to IgnisEye Monitor Dashboard</p>
       </div>
 
       {/* Login Card */}
@@ -88,16 +89,16 @@ export default function LoginPage() {
 
           <div>
             <label className="block text-sm font-medium text-white/80 mb-2 ml-1">
-              Username
+              Email Address
             </label>
             <div className="relative">
               <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
               <input
-                type="text"
+                type="email"
                 required
-                placeholder="Enter username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                placeholder="name@company.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-black/40 border-2 border-white/10 focus:border-cyan-400/50 rounded-2xl pl-12 pr-5 py-4 text-white placeholder-white/20 focus:outline-none focus:ring-0 transition-all text-sm shadow-inner"
               />
             </div>
@@ -139,6 +140,15 @@ export default function LoginPage() {
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Sign In"}
           </button>
         </form>
+
+        <div className="mt-8 pt-8 border-t border-white/10 text-center">
+          <p className="text-white/40 text-xs">
+            Don't have an account?{" "}
+            <Link href="/signup" className="text-cyan-400 hover:text-cyan-300 transition-colors font-medium">
+              Create one now
+            </Link>
+          </p>
+        </div>
       </motion.div>
     </div>
   );

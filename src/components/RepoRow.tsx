@@ -1,6 +1,6 @@
 "use client";
 
-import React, { memo } from "react";
+import React, { memo, useEffect, useState } from "react";
 import type { FetchRepoDataResult } from "../utils/github";
 import { AlertTriangle, User, Lock, ExternalLink, MessageSquare } from "lucide-react";
 
@@ -82,10 +82,20 @@ function formatRelativeTime(isoString: string | null): { text: string; colorClas
 }
 
 function RepoRowComponent({ index, repoKey, data, isRefreshing = false, onViewCommits }: RepoRowProps) {
+  const [, forceUpdate] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      forceUpdate((n) => n + 1);
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const { status, lastPushIso, commitsCount, recentCommitsCount, contributorsCount, lastCommitMessage } = getRepoStatusAndDetails(data);
 
   // Flags as solid badges
-  const flags: Array<{ text: string; color: string }> = [];
+  const flags: Array<{ text: string; color: string; title?: string }> = [];
   const isPrivateFlag = data?.error === "not_found" || data?.repoInfo?.visibility === "private";
   const isTimeoutFlag = data?.error === "timeout";
 
@@ -97,7 +107,11 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false, onViewCo
     }
 
     if (commitsCount === 0 && status !== "Loading") {
-      flags.push({ text: "NO COMMITS", color: "bg-red-500 text-white" });
+      flags.push({
+        text: "NO COMMITS",
+        color: "bg-red-500 text-white",
+        title: lastPushIso ? `Last push: ${lastPushIso}` : undefined,
+      });
     }
 
     if (contributorsCount === 1) {
@@ -225,9 +239,13 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false, onViewCo
       <td className="py-6 px-4 align-middle">
         <div className="flex flex-wrap gap-1 min-w-[80px]">
           {flags.map((flag, i) => (
-             <div key={i} className={`flex items-center justify-center px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter border ${flag.color} border-black/10`}>
-               <span>{flag.text}</span>
-             </div>
+             <span
+               key={i}
+               title={flag.title}
+               className={`flex items-center justify-center px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter border ${flag.color} border-black/10`}
+             >
+               {flag.text}
+             </span>
           ))}
           {flags.length === 0 && status !== 'Loading' && <span className="text-white/10 font-mono text-[10px]">—</span>}
         </div>

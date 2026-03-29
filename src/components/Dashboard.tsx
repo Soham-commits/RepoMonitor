@@ -21,10 +21,17 @@ export function Dashboard({ repos, pat }: DashboardProps) {
     pollStatus,
     nextPollIn,
     triggerManualRefresh,
+    retryNow,
     lastPollTime,
     rateLimitState,
+    hasFreshRateLimit,
     refreshingRepos
   } = usePoller({ repos, pat });
+
+  const apiRemainingDisplay =
+    !hasFreshRateLimit && rateLimitState.remaining === 0 && rateLimitState.limit === 5000
+      ? "—"
+      : String(rateLimitState.remaining);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"All" | RepoStatus>("All");
@@ -170,10 +177,10 @@ export function Dashboard({ repos, pat }: DashboardProps) {
         {/* Header Title */}
         <div className="flex items-center gap-4">
           <Flame className="w-8 h-8 text-cyan-400" />
-          <h1 className="text-3xl font-black text-white tracking-tighter uppercase">Intelligence Dashboard</h1>
+          <h1 className="text-3xl font-black text-white tracking-tighter uppercase">Monitor Dashboard</h1>
           
           <div className="ml-auto text-sm text-white/50 space-y-1 bg-white/5 px-4 py-2 rounded-2xl border border-white/10 backdrop-blur-sm">
-             <p className="text-right font-mono uppercase tracking-widest text-[10px]">API STATUS: <span className="text-cyan-400">{rateLimitState.remaining}</span> / {rateLimitState.limit}</p>
+             <p className="text-right font-mono uppercase tracking-widest text-[10px]">API STATUS: <span className="text-cyan-400">{apiRemainingDisplay}</span> / {rateLimitState.limit}</p>
           </div>
         </div>
 
@@ -193,6 +200,14 @@ export function Dashboard({ repos, pat }: DashboardProps) {
                    ? ' Poller paused to prevent GitHub block. It will resume next hour window.'
                    : ' Entering degraded Tier 1 mode. Idle repos skipped to conserve API requests.'}
               </div>
+              {pollStatus === 'critical' && (
+                <button
+                  onClick={retryNow}
+                  className="ml-auto px-4 py-2 rounded-xl bg-orange-500/20 border border-orange-400/30 text-orange-100 text-xs font-bold uppercase tracking-wider hover:bg-orange-500/30 transition-all"
+                >
+                  Retry Now
+                </button>
+              )}
             </motion.div>
           )}
 
@@ -323,11 +338,11 @@ export function Dashboard({ repos, pat }: DashboardProps) {
                  <th className="py-5 px-4 font-black text-white w-48">Repository</th>
                  <th className="py-5 px-3 font-black text-white w-28">Last Push</th>
                  <th className="py-5 px-2 font-black text-white text-center w-24">Hackathon</th>
-                 <th className="py-5 px-2 font-black text-white text-center w-24">30D Pulse</th>
+                 <th className="py-5 px-2 font-black text-white text-center w-24">Activity</th>
                  <th className="py-5 px-2 font-black text-white text-center w-20">Users</th>
                  <th className="py-5 px-5 font-black text-white w-auto">Last Commit Message</th>
                  <th className="py-5 px-3 font-black text-white text-center w-32">Status</th>
-                 <th className="py-5 px-2 font-black text-white text-center w-16">Log</th>
+                 <th className="py-5 px-2 font-black text-white text-center w-32">Commit History</th>
                  <th className="py-5 px-4 font-black text-white w-32">Flags</th>
                </tr>
              </thead>
@@ -364,19 +379,12 @@ export function Dashboard({ repos, pat }: DashboardProps) {
       )}
       
       <style dangerouslySetInnerHTML={{__html: `
+        .custom-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
         .custom-scrollbar::-webkit-scrollbar {
-          height: 8px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(255, 255, 255, 0.02);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.2);
+          display: none;
         }
       `}} />
     </div>

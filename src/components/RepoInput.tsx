@@ -365,9 +365,9 @@ export function RepoInput({ onStart }: RepoInputProps) {
           <Flame className="w-8 h-8 text-cyan-400 group-hover:text-cyan-300 transition-colors" />
         </div>
         <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight mb-2">
-          Ignisia <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-orange-400">2026</span>
+          IgnisEye
         </h1>
-        <p className="text-white/60 font-light text-sm">Repo Intelligence Dashboard Setup</p>
+        <p className="text-white/60 font-light text-sm">Repo Monitor Dashboard Setup</p>
       </div>
 
       {/* Main Card */}
@@ -379,11 +379,11 @@ export function RepoInput({ onStart }: RepoInputProps) {
           {/* PAT Input */}
           <div>
             <label className="block text-sm font-medium text-white/80 mb-2">
-              GitHub Personal Access Token <span className="text-white/40 font-normal">(Optional, required for private repos)</span>
+              GitHub Personal Access Token <span className="text-white/40 font-normal">(Required for 5,000 req/hr. Generate at github.com/settings/tokens)</span>
             </label>
             <input
               type="password"
-              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+              placeholder="Required for 5,000 req/hr. Generate at github.com/settings/tokens"
               value={pat}
               onChange={(e) => setPat(e.target.value)}
               disabled={status === "validating"}
@@ -425,7 +425,7 @@ export function RepoInput({ onStart }: RepoInputProps) {
               className="relative"
             >
               <textarea
-                placeholder="Paste one GitHub repo URL per line...&#10;e.g. https://github.com/owner/repo&#10;github.com/owner/repo2&#10;owner/repo3"
+                placeholder="Paste one GitHub repo URL per line..."
                 value={repoText}
                 onChange={(e) => setRepoText(e.target.value)}
                 disabled={status === "validating"}

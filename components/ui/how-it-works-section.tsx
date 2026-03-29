@@ -6,13 +6,13 @@ export default function HowItWorksSection() {
   return (
     <section id="how-it-works" className="relative z-20 max-w-7xl mx-auto px-6 py-32">
       <div className="text-center mb-16">
-        <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">Up and Running in 3 Steps</h2>
+        <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">Live in 3 Steps</h2>
       </div>
       <div className="grid md:grid-cols-3 gap-8">
         {[
-          { icon: Key, title: "1", desc: "Generate a free GitHub PAT and paste it in" },
-          { icon: LinkIcon, title: "2", desc: "Paste all 100 team repo URLs — one per line" },
-          { icon: Play, title: "3", desc: "Hit Start. Dashboard goes live and auto-refreshes" }
+          { icon: Key, title: "1", desc: "Generate a free GitHub PAT — Create a Personal Access Token at github.com/settings/tokens. Only public_repo read scope needed." },
+          { icon: LinkIcon, title: "2", desc: "Paste all 100 team repo URLs — One URL per line or import directly from your team submission Excel sheet." },
+          { icon: Play, title: "3", desc: "Dashboard goes live — Auto-refreshes every 8 minutes. Status, commits, flags - all updated silently in the background." }
         ].map((step, i) => (
           <motion.div
             key={i}

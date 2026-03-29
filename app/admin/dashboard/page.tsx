@@ -1,0 +1,721 @@
+"use client"
+
+import React, { useEffect, useMemo, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
+import Papa from "papaparse"
+import { Flame, LogOut, Upload, FileSpreadsheet, Loader2, ExternalLink } from "lucide-react"
+import { motion } from "framer-motion"
+import { MeshGradient } from "@paper-design/shaders-react"
+
+interface Team {
+  teamId: string
+  teamName: string
+  psId: string
+  repoLink: string
+}
+
+interface TeamCommitState {
+  status: "idle" | "loading" | "ready" | "private" | "rate_limited"
+  firstCommit: string | null
+  lastCommit: string | null
+  totalCommits: number | null
+}
+
+interface CommitApiItem {
+  commit?: {
+    author?: { date?: string }
+    committer?: { date?: string }
+  }
+}
+
+interface CommitStats {
+  totalCommits: number
+  firstCommit: string | null
+  lastCommit: string | null
+}
+
+interface ParsedTeamResult {
+  teams: Team[]
+  hasRequiredColumns: boolean
+}
+
+const REQUIRED_COLUMN_ERROR = "Could not detect required columns. Check your file format"
+const COMMIT_SINCE = "2026-04-02T08:30:00Z"
+const COMMIT_UNTIL = "2026-04-04T18:29:00Z"
+const ADMIN_TEAMS_STORAGE_KEY = "admin-teams"
+const ADMIN_PAT_KEY = "admin-pat"
+
+const formatCommitTime = (iso: string) => {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(iso))
+}
+
+const getTeamKey = (team: Team) => `${team.psId}::${team.teamId}::${team.repoLink}`
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+const extractOwnerRepo = (repoLink: string): { owner: string; repo: string } | null => {
+  const trimmed = repoLink.trim().replace(/\.git$/i, "")
+
+  if (!trimmed) return null
+
+  const parsePath = (pathValue: string) => {
+    const parts = pathValue.split("/").filter(Boolean)
+    if (parts.length < 2) return null
+    return { owner: parts[0], repo: parts[1] }
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed)
+      if (!url.hostname.toLowerCase().includes("github.com")) return null
+      return parsePath(url.pathname)
+    } catch {
+      return null
+    }
+  }
+
+  if (/^github\.com\//i.test(trimmed)) {
+    return parsePath(trimmed.replace(/^github\.com\//i, ""))
+  }
+
+  return parsePath(trimmed)
+}
+
+const buildCommitEndpoint = (owner: string, repo: string, params: Record<string, string | number>) => {
+  const query = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    query.set(key, String(value))
+  })
+  return `https://api.github.com/repos/${owner}/${repo}/commits?${query.toString()}`
+}
+
+const normalizeHeader = (value: string) =>
+  value.trim().toLowerCase().replace(/\s+/g, "").replace(/_/g, "").replace(/-/g, "")
+
+const findHeaderKey = (headers: string[], aliases: string[]) => {
+  const aliasSet = new Set(aliases.map((a) => normalizeHeader(a)))
+  return headers.find((header) => aliasSet.has(normalizeHeader(header)))
+}
+
+const parseTeamsFromRows = (rows: Record<string, unknown>[]): ParsedTeamResult => {
+  if (!rows.length) {
+    return { teams: [], hasRequiredColumns: false }
+  }
+
+  const headers = Object.keys(rows[0])
+  const teamIdKey = findHeaderKey(headers, ["Team ID", "team_id", "teamid"])
+  const teamNameKey = findHeaderKey(headers, ["Team Name", "team_name", "teamname"])
+  const psIdKey = findHeaderKey(headers, ["PS ID", "ps_id", "psid"])
+  const repoLinkKey = findHeaderKey(headers, ["GitHub Repo Link", "github_repo", "repo", "repo_link"])
+
+  if (!teamIdKey || !teamNameKey || !psIdKey || !repoLinkKey) {
+    return { teams: [], hasRequiredColumns: false }
+  }
+
+  const teams = rows
+    .map((row) => ({
+      teamId: String(row[teamIdKey] ?? "").trim(),
+      teamName: String(row[teamNameKey] ?? "").trim(),
+      psId: String(row[psIdKey] ?? "").trim(),
+      repoLink: String(row[repoLinkKey] ?? "").trim(),
+    }))
+    .filter((team) => team.teamId && team.teamName && team.psId && team.repoLink)
+
+  return { teams, hasRequiredColumns: true }
+}
+
+export default function AdminDashboardPage() {
+  const router = useRouter()
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
+  const [importMessage, setImportMessage] = useState("")
+  const [importError, setImportError] = useState("")
+  const [loadedFromPreviousSession, setLoadedFromPreviousSession] = useState(false)
+  const [teams, setTeams] = useState<Team[]>([])
+  const [pat, setPat] = useState("")
+  const [rateLimit, setRateLimit] = useState<{ remaining: string; limit: string }>({ remaining: "--", limit: "--" })
+  const [teamCommits, setTeamCommits] = useState<Record<string, TeamCommitState>>({})
+  const fetchCycleRef = useRef(0)
+
+  useEffect(() => {
+    const auth = localStorage.getItem("admin-auth")
+    if (auth !== "true") {
+      router.push("/admin")
+    } else {
+      setIsAuthenticated(true)
+    }
+  }, [router])
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+
+    const savedTeamsRaw = localStorage.getItem(ADMIN_TEAMS_STORAGE_KEY)
+    if (!savedTeamsRaw) return
+
+    try {
+      const savedTeams = JSON.parse(savedTeamsRaw) as Team[]
+      if (!Array.isArray(savedTeams) || savedTeams.length === 0) return
+
+      const sanitizedTeams = savedTeams.filter(
+        (team) => team?.teamId && team?.teamName && team?.psId && team?.repoLink
+      )
+      if (!sanitizedTeams.length) return
+
+      setTeams(sanitizedTeams)
+      const psCount = new Set(sanitizedTeams.map((team) => team.psId)).size
+      setImportMessage(`${sanitizedTeams.length} teams imported across ${psCount} problem statements`)
+      setLoadedFromPreviousSession(true)
+      setImportError("")
+    } catch {
+      localStorage.removeItem(ADMIN_TEAMS_STORAGE_KEY)
+    }
+  }, [isAuthenticated])
+
+  useEffect(() => {
+    const savedPat = localStorage.getItem(ADMIN_PAT_KEY)?.trim() || ""
+    setPat(savedPat)
+  }, [])
+
+  const handleLogout = () => {
+    localStorage.removeItem("admin-auth")
+    router.push("/admin")
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = () => {
+    setIsDragging(false)
+  }
+
+  const parseCsvFile = (file: File): Promise<Record<string, unknown>[]> => {
+    return new Promise((resolve, reject) => {
+      Papa.parse<Record<string, unknown>>(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => resolve(results.data),
+        error: (error) => reject(error),
+      })
+    })
+  }
+
+  const parseExcelFile = async (file: File): Promise<Record<string, unknown>[]> => {
+    const XLSX = await import("xlsx")
+    const buffer = await file.arrayBuffer()
+    const workbook = XLSX.read(buffer, { type: "array" })
+    const firstSheetName = workbook.SheetNames[0]
+
+    if (!firstSheetName) {
+      return []
+    }
+
+    const sheet = workbook.Sheets[firstSheetName]
+    return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" })
+  }
+
+  const fetchCommitStats = async (
+    owner: string,
+    repo: string,
+    token: string,
+    extraParams: Record<string, string>
+  ): Promise<{ kind: "ok"; stats: CommitStats } | { kind: "private" } | { kind: "rate_limited" }> => {
+    const headers: HeadersInit = {
+      Accept: "application/vnd.github+json",
+    }
+
+    if (token.trim()) {
+      headers.Authorization = `token ${token.trim()}`
+    }
+
+    const endpoint = buildCommitEndpoint(owner, repo, {
+      ...extraParams,
+      per_page: 100,
+    })
+
+    const response = await fetch(endpoint, { headers })
+
+    const remaining = response.headers.get("x-ratelimit-remaining")
+    const limit = response.headers.get("x-ratelimit-limit")
+    if (remaining && limit) {
+      setRateLimit({ remaining, limit })
+    }
+
+    if (!response.ok) {
+      const remaining = response.headers.get("x-ratelimit-remaining")
+      if (response.status === 403 && remaining === "0") {
+        return { kind: "rate_limited" }
+      }
+      if (response.status === 401 || response.status === 404) {
+        return { kind: "private" }
+      }
+      if (response.status === 403) {
+        return { kind: "private" }
+      }
+      return {
+        kind: "ok",
+        stats: { totalCommits: 0, firstCommit: null, lastCommit: null },
+      }
+    }
+
+    const commits = (await response.json()) as CommitApiItem[]
+    const commitDates = commits
+      .map((item) => item.commit?.author?.date || item.commit?.committer?.date)
+      .filter((value): value is string => Boolean(value))
+      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+
+    const firstDate = commitDates.length > 0 ? commitDates[0] : null
+    const lastDate = commitDates.length > 0 ? commitDates[commitDates.length - 1] : null
+
+    return {
+      kind: "ok",
+      stats: {
+        totalCommits: commits.length,
+        firstCommit: firstDate,
+        lastCommit: lastDate,
+      },
+    }
+  }
+
+  const updateTeamCommit = (team: Team, next: TeamCommitState) => {
+    const key = getTeamKey(team)
+    setTeamCommits((prev) => ({
+      ...prev,
+      [key]: next,
+    }))
+  }
+
+  const fetchRepoCommits = async (team: Team, token: string, cycleId: number) => {
+    const parsedRepo = extractOwnerRepo(team.repoLink)
+    if (!parsedRepo) {
+      if (fetchCycleRef.current !== cycleId) return
+      updateTeamCommit(team, {
+        status: "private",
+        firstCommit: null,
+        lastCommit: null,
+        totalCommits: null,
+      })
+      return
+    }
+
+    try {
+      const windowResult = await fetchCommitStats(parsedRepo.owner, parsedRepo.repo, token, {
+        since: COMMIT_SINCE,
+        until: COMMIT_UNTIL,
+      })
+
+      if (fetchCycleRef.current !== cycleId) return
+
+      if (windowResult.kind === "private") {
+        updateTeamCommit(team, {
+          status: "private",
+          firstCommit: null,
+          lastCommit: null,
+          totalCommits: null,
+        })
+        return
+      }
+
+      if (windowResult.kind === "rate_limited") {
+        updateTeamCommit(team, {
+          status: "rate_limited",
+          firstCommit: null,
+          lastCommit: null,
+          totalCommits: null,
+        })
+        return
+      }
+
+      if (windowResult.stats.totalCommits === 0) {
+        const fallbackResult = await fetchCommitStats(parsedRepo.owner, parsedRepo.repo, token, {})
+
+        if (fetchCycleRef.current !== cycleId) return
+
+        if (fallbackResult.kind === "private") {
+          updateTeamCommit(team, {
+            status: "private",
+            firstCommit: null,
+            lastCommit: null,
+            totalCommits: null,
+          })
+          return
+        }
+
+        if (fallbackResult.kind === "rate_limited") {
+          updateTeamCommit(team, {
+            status: "rate_limited",
+            firstCommit: null,
+            lastCommit: null,
+            totalCommits: null,
+          })
+          return
+        }
+
+        updateTeamCommit(team, {
+          status: "ready",
+          firstCommit: fallbackResult.stats.firstCommit ? formatCommitTime(fallbackResult.stats.firstCommit) : null,
+          lastCommit: fallbackResult.stats.lastCommit ? formatCommitTime(fallbackResult.stats.lastCommit) : null,
+          totalCommits: fallbackResult.stats.totalCommits,
+        })
+        return
+      }
+
+      updateTeamCommit(team, {
+        status: "ready",
+        firstCommit: windowResult.stats.firstCommit ? formatCommitTime(windowResult.stats.firstCommit) : null,
+        lastCommit: windowResult.stats.lastCommit ? formatCommitTime(windowResult.stats.lastCommit) : null,
+        totalCommits: windowResult.stats.totalCommits,
+      })
+    } catch {
+      if (fetchCycleRef.current !== cycleId) return
+      updateTeamCommit(team, {
+        status: "private",
+        firstCommit: null,
+        lastCommit: null,
+        totalCommits: null,
+      })
+    }
+  }
+
+  const hydrateCommitData = async (importedTeams: Team[], token: string) => {
+    const cycleId = fetchCycleRef.current + 1
+    fetchCycleRef.current = cycleId
+
+    const initialState = importedTeams.reduce<Record<string, TeamCommitState>>((acc, team) => {
+      acc[getTeamKey(team)] = {
+        status: "loading",
+        firstCommit: null,
+        lastCommit: null,
+        totalCommits: null,
+      }
+      return acc
+    }, {})
+    setTeamCommits(initialState)
+
+    for (let i = 0; i < importedTeams.length; i += 10) {
+      if (fetchCycleRef.current !== cycleId) return
+
+      const batch = importedTeams.slice(i, i + 10)
+      await Promise.all(batch.map((team) => fetchRepoCommits(team, token, cycleId)))
+
+      if (i + 10 < importedTeams.length) {
+        await delay(300)
+      }
+    }
+  }
+
+  const handleImport = async (file: File) => {
+    const fileName = file.name.toLowerCase()
+    const isCsv = fileName.endsWith(".csv")
+    const isXlsx = fileName.endsWith(".xlsx")
+
+    if (!isCsv && !isXlsx) {
+      setImportError("Only .xlsx or .csv files supported")
+      setImportMessage("")
+      return
+    }
+
+    setIsImporting(true)
+    setImportError("")
+    setImportMessage("")
+
+    try {
+      const rows = isCsv ? await parseCsvFile(file) : await parseExcelFile(file)
+      const parsed = parseTeamsFromRows(rows)
+
+      if (!parsed.hasRequiredColumns) {
+        setTeams([])
+        setImportError(REQUIRED_COLUMN_ERROR)
+        return
+      }
+
+      setTeams(parsed.teams)
+      localStorage.setItem(ADMIN_TEAMS_STORAGE_KEY, JSON.stringify(parsed.teams))
+      const psCount = new Set(parsed.teams.map((team) => team.psId)).size
+      setImportMessage(`${parsed.teams.length} teams imported across ${psCount} problem statements`)
+      setLoadedFromPreviousSession(false)
+    } catch {
+      setTeams([])
+      setTeamCommits({})
+      setImportError(REQUIRED_COLUMN_ERROR)
+    } finally {
+      setIsImporting(false)
+      setIsDragging(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    if (!teams.length) return
+    void hydrateCommitData(teams, pat)
+  }, [isAuthenticated, teams, pat])
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    const droppedFile = e.dataTransfer.files?.[0]
+    if (!droppedFile) return
+    void handleImport(droppedFile)
+  }
+
+  const groupedTeams = useMemo(() => {
+    return teams.reduce<Record<string, Team[]>>((acc, team) => {
+      if (!acc[team.psId]) {
+        acc[team.psId] = []
+      }
+      acc[team.psId].push(team)
+      return acc
+    }, {})
+  }, [teams])
+
+  const handleLoadNewData = () => {
+    localStorage.removeItem(ADMIN_TEAMS_STORAGE_KEY)
+    setTeams([])
+    setTeamCommits({})
+    setImportMessage("")
+    setImportError("")
+    setLoadedFromPreviousSession(false)
+  }
+
+  if (isAuthenticated === null) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen relative bg-black flex flex-col font-sans overflow-x-hidden">
+      {/* Background Gradient Mesh */}
+      <div className="fixed inset-0 z-0 pointer-events-none">
+        <MeshGradient
+          className="absolute inset-0 w-full h-full"
+          colors={["#000000", "#06b6d4", "#0891b2", "#164e63", "#f97316"]}
+          speed={0.3}
+        />
+        <MeshGradient
+          className="absolute inset-0 w-full h-full opacity-60"
+          colors={["#000000", "#ffffff", "#06b6d4", "#f97316"]}
+          speed={0.2}
+        />
+      </div>
+
+      {/* Navbar */}
+      <nav className="z-20 w-full px-8 py-6 flex items-center justify-between backdrop-blur-md border-b border-white/10 bg-black/20 sticky top-0">
+        <div className="flex items-center gap-3">
+          <Flame className="w-8 h-8 text-cyan-400" />
+          <span className="text-xl font-black text-white tracking-tighter uppercase">
+            Ignisia 2026 — Admin
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          {pat ? (
+            <span className="text-[11px] text-white/60 font-medium">API: {rateLimit.remaining} / {rateLimit.limit}</span>
+          ) : (
+            <span className="text-[11px] text-yellow-300 font-medium">API: No PAT</span>
+          )}
+          <button
+            onClick={handleLogout}
+            className="px-6 py-2 rounded-full bg-white/5 border border-white/10 text-white/70 text-xs font-medium hover:bg-white/10 hover:text-white transition-all flex items-center gap-2 group cursor-pointer"
+          >
+            <LogOut className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+            Sign Out
+          </button>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <main className="z-10 flex-1 w-full max-w-7xl mx-auto p-6">
+        {teams.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="w-full max-w-2xl mx-auto"
+          >
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`relative p-12 rounded-[2.5rem] bg-white/5 backdrop-blur-xl border-2 border-dashed transition-all duration-300 flex flex-col items-center text-center gap-6 group ${
+                isDragging ? "border-cyan-400 bg-cyan-500/10 scale-[1.02]" : "border-white/10 hover:border-white/20"
+              }`}
+            >
+              <div className="w-20 h-20 rounded-3xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
+                <Upload className={`w-10 h-10 text-cyan-400 ${isDragging ? "animate-bounce" : ""}`} />
+              </div>
+
+              <div className="space-y-2">
+                <h2 className="text-2xl font-bold text-white tracking-tight">Import Team Data</h2>
+                <p className="text-white/50 text-sm max-w-sm mx-auto leading-relaxed">
+                  Upload Excel or CSV with Team ID, Team Name, PS ID, GitHub Repo Link
+                </p>
+              </div>
+
+              <label className="mt-4 relative group cursor-pointer">
+                <input
+                  type="file"
+                  accept=".xlsx,.csv"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    void handleImport(file)
+                    e.currentTarget.value = ""
+                  }}
+                />
+                <div className="px-10 py-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-orange-500 text-white font-bold text-sm transition-all duration-300 hover:from-cyan-400 hover:to-orange-400 shadow-lg active:scale-95 uppercase tracking-wider">
+                  {isImporting ? "Importing..." : "Select File"}
+                </div>
+              </label>
+
+              <div className="absolute top-6 right-6 opacity-10">
+                <FileSpreadsheet className="w-16 h-16 text-white" />
+              </div>
+            </div>
+
+            {importError && <p className="mt-5 text-red-400 text-sm text-center">{importError}</p>}
+          </motion.div>
+        ) : (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+            <div>
+              <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-sm font-medium flex items-center justify-between gap-4">
+                <span>{importMessage}</span>
+                <button
+                  type="button"
+                  onClick={handleLoadNewData}
+                  className="px-4 py-2 rounded-full bg-white/10 border border-white/20 text-white text-[11px] font-bold uppercase tracking-wider hover:bg-white/20 transition-all whitespace-nowrap"
+                >
+                  Load New Data
+                </button>
+              </div>
+              {loadedFromPreviousSession && (
+                <p className="mt-2 text-xs text-white/45">Data loaded from previous session</p>
+              )}
+            </div>
+
+            <div className="space-y-8">
+              {Object.entries(groupedTeams).map(([psId, psTeams]) => (
+                <section
+                  key={psId}
+                  className="rounded-[2rem] bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden"
+                >
+                  <div className="px-6 py-5 flex items-center justify-between border-b border-white/10 bg-white/5">
+                    <h3 className="text-white font-bold text-sm uppercase tracking-wide">
+                      PS ID: {psId} - {psTeams.length} {psTeams.length === 1 ? "Team" : "Teams"}
+                    </h3>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="text-[10px] uppercase tracking-wider border-b border-white/10 bg-white/5">
+                          <th className="py-4 px-6 font-black text-white/40 w-28">Team ID</th>
+                          <th className="py-4 px-6 font-black text-white">Team Name</th>
+                          <th className="py-4 px-6 font-black text-white w-64">GitHub Repo</th>
+                          <th className="py-4 px-6 font-black text-white text-center w-32">First Commit</th>
+                          <th className="py-4 px-6 font-black text-white text-center w-32">Last Commit</th>
+                          <th className="py-4 px-6 font-black text-white text-center w-32">Total Commits</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {psTeams.map((team) => (
+                          (() => {
+                            const commitState = teamCommits[getTeamKey(team)]
+                            const isLoading = commitState?.status === "loading"
+                            const isPrivate = commitState?.status === "private"
+                            const isRateLimited = commitState?.status === "rate_limited"
+                            const parsedRepo = extractOwnerRepo(team.repoLink)
+                            const commitsLink = parsedRepo ? `https://github.com/${parsedRepo.owner}/${parsedRepo.repo}/commits` : null
+                            return (
+                          <tr
+                            key={`${team.psId}-${team.teamId}`}
+                            onClick={() => window.open(team.repoLink, "_blank")}
+                            className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors cursor-pointer"
+                          >
+                            <td className="py-4 px-6 font-mono text-xs text-cyan-300/80">{team.teamId}</td>
+                            <td className="py-4 px-6 text-white font-semibold">{team.teamName}</td>
+                            <td className="py-4 px-6 text-cyan-300 text-sm whitespace-nowrap">
+                              <div className="inline-flex items-center gap-3 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-2">
+                                  Open Repo
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </span>
+                                {commitsLink && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      window.open(commitsLink, "_blank")
+                                    }}
+                                    className="text-cyan-200/90 hover:text-cyan-100 underline underline-offset-2 whitespace-nowrap"
+                                  >
+                                    See Commits
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-4 px-6 text-center text-white/50">
+                              {isLoading ? (
+                                <span className="animate-pulse">...</span>
+                              ) : isRateLimited ? (
+                                <span className="text-amber-400 font-semibold">RATE LIMITED</span>
+                              ) : isPrivate ? (
+                                <span className="text-red-400 font-semibold">PRIVATE</span>
+                              ) : commitState?.firstCommit ? (
+                                <span>{commitState.firstCommit}</span>
+                              ) : (
+                                <span className="text-white/40">-</span>
+                              )}
+                            </td>
+                            <td className="py-4 px-6 text-center text-white/50">
+                              {isLoading ? (
+                                <span className="animate-pulse">...</span>
+                              ) : isRateLimited ? (
+                                <span className="text-amber-400 font-semibold">RATE LIMITED</span>
+                              ) : isPrivate ? (
+                                <span className="text-red-400 font-semibold">PRIVATE</span>
+                              ) : commitState?.lastCommit ? (
+                                <span>{commitState.lastCommit}</span>
+                              ) : (
+                                <span className="text-white/40">-</span>
+                              )}
+                            </td>
+                            <td className="py-4 px-6 text-center">
+                              {isLoading ? (
+                                <span className="animate-pulse text-white/50">...</span>
+                              ) : isRateLimited ? (
+                                <span className="text-amber-400 font-semibold">RATE LIMITED</span>
+                              ) : isPrivate ? (
+                                <span className="text-red-400 font-semibold">PRIVATE</span>
+                              ) : commitState?.totalCommits && commitState.totalCommits > 0 ? (
+                                <span className="text-emerald-400 font-semibold">{commitState.totalCommits}</span>
+                              ) : commitState?.totalCommits === 0 ? (
+                                <span className="text-red-400 font-semibold">0</span>
+                              ) : (
+                                <span className="text-white/40">-</span>
+                              )}
+                            </td>
+                          </tr>
+                            )
+                          })()
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </main>
+    </div>
+  )
+}

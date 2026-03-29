@@ -4,8 +4,8 @@
 // ---------------------------------------------------------------------------
 // UTC Constants (hardcoded — no runtime conversion)
 // ---------------------------------------------------------------------------
-export const HACKATHON_START = "2026-01-01T00:00:00Z";
-export const HACKATHON_END = "2026-12-31T23:59:59Z";
+export const HACKATHON_START = "2026-04-02T00:00:00Z";
+export const HACKATHON_END = "2026-04-04T23:59:59Z";
 
 // ---------------------------------------------------------------------------
 // TypeScript Types
@@ -760,7 +760,61 @@ export async function fetchRepoInfo(
   }
 
   const successInfo = result as { data: RepoInfo; rateLimit: RateLimitState };
-  return { data: successInfo.data, rateLimit: successInfo.rateLimit };
+
+  let effectiveRateLimit = successInfo.rateLimit;
+  let correctedPushedAt = successInfo.data.pushed_at;
+
+  try {
+    const latestCommitResult = await cachedGet<CommitData[]>(
+      owner,
+      repo,
+      "commits:default_latest",
+      `https://api.github.com/repos/${owner}/${repo}/commits?per_page=1`,
+      pat,
+      signal
+    );
+
+    if ("status" in latestCommitResult) {
+      if (latestCommitResult.status === "aborted") return { error: "aborted" };
+      if (latestCommitResult.status === "timeout") {
+        return {
+          error: "timeout",
+          rateLimit: { remaining: 0, reset: 0, limit: 0 },
+        };
+      }
+      if (latestCommitResult.status === 403) {
+        return {
+          error: "rate_limited",
+          retryAfter: latestCommitResult.retryAfter,
+          rateLimit: latestCommitResult.rateLimit,
+        };
+      }
+    } else {
+      const commitSuccess = latestCommitResult as {
+        data: CommitData[];
+        rateLimit: RateLimitState;
+      };
+      effectiveRateLimit = commitSuccess.rateLimit;
+
+      const latest = commitSuccess.data?.[0];
+      const defaultBranchLastPush =
+        latest?.commit?.committer?.date ?? latest?.commit?.author?.date;
+
+      if (defaultBranchLastPush) {
+        correctedPushedAt = defaultBranchLastPush;
+      }
+    }
+  } catch {
+    // If this secondary lookup fails, we keep repo_info.pushed_at as fallback.
+  }
+
+  return {
+    data: {
+      ...successInfo.data,
+      pushed_at: correctedPushedAt,
+    },
+    rateLimit: effectiveRateLimit,
+  };
 }
 
 // ---------------------------------------------------------------------------
