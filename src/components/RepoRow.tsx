@@ -121,6 +121,7 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false, onViewCo
 
   const isPrivateRow = isPrivateFlag;
   const statusText = isPrivateRow ? "PRIVATE" : status === "Timeout" ? "TIMEOUT" : status;
+  const [ownerName, repoName] = repoKey.split("/");
 
   const relativePush = formatRelativeTime(lastPushIso);
 
@@ -142,9 +143,13 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false, onViewCo
           href={`https://github.com/${repoKey}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-white font-bold hover:text-cyan-400 transition-all inline-flex items-center gap-1.5 text-sm tracking-tight break-all"
+          title={repoKey}
+          className="text-white font-bold hover:text-cyan-400 transition-all inline-flex items-center gap-1.5 text-sm tracking-tight"
         >
-          {repoKey}
+          <span className="leading-tight">
+            <span className="block text-white/85">{ownerName}/</span>
+            <span className="block text-white">{repoName || repoKey}</span>
+          </span>
           <ExternalLink className="w-3 h-3 text-cyan-400" />
         </a>
       </td>

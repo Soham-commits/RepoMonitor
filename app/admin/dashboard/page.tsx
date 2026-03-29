@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Papa from "papaparse"
-import { Flame, LogOut, Upload, FileSpreadsheet, Loader2, ExternalLink } from "lucide-react"
+import { Flame, LogOut, Upload, FileSpreadsheet, Loader2, ExternalLink, Search, Filter, ArrowUpDown } from "lucide-react"
 import { motion } from "framer-motion"
 import { MeshGradient } from "@paper-design/shaders-react"
 
@@ -38,6 +38,9 @@ interface ParsedTeamResult {
   teams: Team[]
   hasRequiredColumns: boolean
 }
+
+type AdminSortKey = "Team Name" | "Team ID" | "PS ID" | "Total Commits"
+type AdminCombinedFilter = "All" | "Has Commits" | "No Commits" | `PS:${string}`
 
 const REQUIRED_COLUMN_ERROR = "Could not detect required columns. Check your file format"
 const COMMIT_SINCE = "2026-04-02T08:30:00Z"
@@ -134,14 +137,33 @@ export default function AdminDashboardPage() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
-  const [importMessage, setImportMessage] = useState("")
   const [importError, setImportError] = useState("")
-  const [loadedFromPreviousSession, setLoadedFromPreviousSession] = useState(false)
+  const [importToastMessage, setImportToastMessage] = useState("")
+  const [showImportToast, setShowImportToast] = useState(false)
+  const [isFetchingCommitData, setIsFetchingCommitData] = useState(false)
+  const [search, setSearch] = useState("")
+  const [combinedFilter, setCombinedFilter] = useState<AdminCombinedFilter>("All")
+  const [sortKey, setSortKey] = useState<AdminSortKey>("Team Name")
   const [teams, setTeams] = useState<Team[]>([])
   const [pat, setPat] = useState("")
   const [rateLimit, setRateLimit] = useState<{ remaining: string; limit: string }>({ remaining: "--", limit: "--" })
   const [teamCommits, setTeamCommits] = useState<Record<string, TeamCommitState>>({})
   const fetchCycleRef = useRef(0)
+  const importToastTimeoutRef = useRef<number | null>(null)
+
+  const showImportSuccessToast = (message: string) => {
+    if (importToastTimeoutRef.current) {
+      window.clearTimeout(importToastTimeoutRef.current)
+    }
+
+    setImportToastMessage(message)
+    setShowImportToast(true)
+
+    importToastTimeoutRef.current = window.setTimeout(() => {
+      setShowImportToast(false)
+      importToastTimeoutRef.current = null
+    }, 4000)
+  }
 
   useEffect(() => {
     const auth = localStorage.getItem("admin-auth")
@@ -168,9 +190,6 @@ export default function AdminDashboardPage() {
       if (!sanitizedTeams.length) return
 
       setTeams(sanitizedTeams)
-      const psCount = new Set(sanitizedTeams.map((team) => team.psId)).size
-      setImportMessage(`${sanitizedTeams.length} teams imported across ${psCount} problem statements`)
-      setLoadedFromPreviousSession(true)
       setImportError("")
     } catch {
       localStorage.removeItem(ADMIN_TEAMS_STORAGE_KEY)
@@ -178,9 +197,18 @@ export default function AdminDashboardPage() {
   }, [isAuthenticated])
 
   useEffect(() => {
+    return () => {
+      if (importToastTimeoutRef.current) {
+        window.clearTimeout(importToastTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isAuthenticated) return
     const savedPat = localStorage.getItem(ADMIN_PAT_KEY)?.trim() || ""
     setPat(savedPat)
-  }, [])
+  }, [isAuthenticated])
 
   const handleLogout = () => {
     localStorage.removeItem("admin-auth")
@@ -411,6 +439,16 @@ export default function AdminDashboardPage() {
     }
   }
 
+  const fetchAllCommitData = async (importedTeams: Team[], token: string) => {
+    console.log("Fetching commits for", importedTeams.length, "teams")
+    setIsFetchingCommitData(true)
+    try {
+      await hydrateCommitData(importedTeams, token)
+    } finally {
+      setIsFetchingCommitData(false)
+    }
+  }
+
   const handleImport = async (file: File) => {
     const fileName = file.name.toLowerCase()
     const isCsv = fileName.endsWith(".csv")
@@ -418,13 +456,11 @@ export default function AdminDashboardPage() {
 
     if (!isCsv && !isXlsx) {
       setImportError("Only .xlsx or .csv files supported")
-      setImportMessage("")
       return
     }
 
     setIsImporting(true)
     setImportError("")
-    setImportMessage("")
 
     try {
       const rows = isCsv ? await parseCsvFile(file) : await parseExcelFile(file)
@@ -439,8 +475,7 @@ export default function AdminDashboardPage() {
       setTeams(parsed.teams)
       localStorage.setItem(ADMIN_TEAMS_STORAGE_KEY, JSON.stringify(parsed.teams))
       const psCount = new Set(parsed.teams.map((team) => team.psId)).size
-      setImportMessage(`${parsed.teams.length} teams imported across ${psCount} problem statements`)
-      setLoadedFromPreviousSession(false)
+      showImportSuccessToast(`${parsed.teams.length} teams imported across ${psCount} problem statements`)
     } catch {
       setTeams([])
       setTeamCommits({})
@@ -453,9 +488,17 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (!isAuthenticated) return
-    if (!teams.length) return
-    void hydrateCommitData(teams, pat)
-  }, [isAuthenticated, teams, pat])
+    if (teams.length === 0) {
+      setIsFetchingCommitData(false)
+      return
+    }
+    const token = (pat || localStorage.getItem(ADMIN_PAT_KEY)?.trim() || "")
+    if (!token) return
+    if (token !== pat) {
+      setPat(token)
+    }
+    void fetchAllCommitData(teams, token)
+  }, [teams, pat, isAuthenticated])
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -475,13 +518,76 @@ export default function AdminDashboardPage() {
     }, {})
   }, [teams])
 
+  const getCommitCount = (team: Team) => teamCommits[getTeamKey(team)]?.totalCommits
+
+  const hasCommits = (team: Team) => {
+    const commitCount = getCommitCount(team)
+    return typeof commitCount === "number" && commitCount > 0
+  }
+
+  const hasNoCommits = (team: Team) => {
+    const commitCount = getCommitCount(team)
+    return commitCount === 0
+  }
+
+  const matchesCombinedFilter = (team: Team, psId: string) => {
+    if (combinedFilter === "All") return true
+    if (combinedFilter === "Has Commits") return hasCommits(team)
+    if (combinedFilter === "No Commits") return hasNoCommits(team)
+    if (combinedFilter.startsWith("PS:")) {
+      return psId === combinedFilter.slice(3)
+    }
+    return true
+  }
+
+  const filteredGroupedTeams = useMemo(() => {
+    const query = search.trim().toLowerCase()
+
+    const result: Record<string, Team[]> = {}
+    Object.entries(groupedTeams).forEach(([psId, psTeams]) => {
+      const filtered = psTeams
+        .filter((team) => {
+          const matchesSearch = !query || (
+          team.teamId.toLowerCase().includes(query) ||
+          team.teamName.toLowerCase().includes(query) ||
+          team.psId.toLowerCase().includes(query) ||
+          team.repoLink.toLowerCase().includes(query)
+          )
+
+          if (!matchesSearch) return false
+          return matchesCombinedFilter(team, psId)
+        })
+        .sort((a, b) => {
+          if (sortKey === "Team Name") return a.teamName.localeCompare(b.teamName)
+          if (sortKey === "Team ID") return a.teamId.localeCompare(b.teamId)
+          if (sortKey === "PS ID") return a.psId.localeCompare(b.psId)
+
+          const aCount = teamCommits[getTeamKey(a)]?.totalCommits ?? -1
+          const bCount = teamCommits[getTeamKey(b)]?.totalCommits ?? -1
+          return bCount - aCount
+        })
+
+      if (filtered.length) {
+        result[psId] = filtered
+      }
+    })
+
+    return result
+  }, [groupedTeams, search, combinedFilter, sortKey, teamCommits])
+
+  const availablePsIds = useMemo(() => {
+    return Object.keys(groupedTeams).sort((a, b) => a.localeCompare(b))
+  }, [groupedTeams])
+
   const handleLoadNewData = () => {
     localStorage.removeItem(ADMIN_TEAMS_STORAGE_KEY)
     setTeams([])
     setTeamCommits({})
-    setImportMessage("")
     setImportError("")
-    setLoadedFromPreviousSession(false)
+    setIsFetchingCommitData(false)
+    setSearch("")
+    setCombinedFilter("All")
+    setSortKey("Team Name")
   }
 
   if (isAuthenticated === null) {
@@ -509,7 +615,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Navbar */}
-      <nav className="z-20 w-full px-8 py-6 flex items-center justify-between backdrop-blur-md border-b border-white/10 bg-black/20 sticky top-0">
+      <nav className="z-20 w-full px-8 py-6 flex items-center justify-between backdrop-blur-md bg-black/20 sticky top-0">
         <div className="flex items-center gap-3">
           <Flame className="w-8 h-8 text-cyan-400" />
           <span className="text-xl font-black text-white tracking-tighter uppercase">
@@ -521,6 +627,15 @@ export default function AdminDashboardPage() {
             <span className="text-[11px] text-white/60 font-medium">API: {rateLimit.remaining} / {rateLimit.limit}</span>
           ) : (
             <span className="text-[11px] text-yellow-300 font-medium">API: No PAT</span>
+          )}
+          {teams.length > 0 && (
+            <button
+              type="button"
+              onClick={handleLoadNewData}
+              className="border border-white/20 text-white/70 hover:bg-white/10 px-4 py-1.5 rounded-full text-sm transition-all"
+            >
+              ↑ Import New Data
+            </button>
           )}
           <button
             onClick={handleLogout}
@@ -585,24 +700,55 @@ export default function AdminDashboardPage() {
           </motion.div>
         ) : (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
-            <div>
-              <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-sm font-medium flex items-center justify-between gap-4">
-                <span>{importMessage}</span>
-                <button
-                  type="button"
-                  onClick={handleLoadNewData}
-                  className="px-4 py-2 rounded-full bg-white/10 border border-white/20 text-white text-[11px] font-bold uppercase tracking-wider hover:bg-white/20 transition-all whitespace-nowrap"
-                >
-                  Load New Data
-                </button>
+            <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center bg-white/5 border border-white/10 p-4 rounded-2xl backdrop-blur-md shadow-xl w-full">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="w-4 h-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search owner/repo..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-cyan-400/50 text-sm w-full"
+                />
               </div>
-              {loadedFromPreviousSession && (
-                <p className="mt-2 text-xs text-white/45">Data loaded from previous session</p>
-              )}
+
+              <div className="w-px h-8 bg-white/10 hidden md:block" />
+
+              <div className="relative">
+                <Filter className="w-4 h-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2" />
+                <select
+                  title="Filter"
+                  value={combinedFilter}
+                  onChange={(e) => setCombinedFilter(e.target.value as AdminCombinedFilter)}
+                  className="bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-white focus:outline-none focus:border-cyan-400/50 text-sm appearance-none min-w-[150px] cursor-pointer"
+                >
+                  <option value="All">All Filters</option>
+                  <option value="Has Commits">Has Commits</option>
+                  <option value="No Commits">No Commits</option>
+                  {availablePsIds.map((psId) => (
+                    <option key={psId} value={`PS:${psId}`}>{`PS ID: ${psId}`}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="relative">
+                <ArrowUpDown className="w-4 h-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2" />
+                <select
+                  title="Sort Options"
+                  value={sortKey}
+                  onChange={(e) => setSortKey(e.target.value as AdminSortKey)}
+                  className="bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-white focus:outline-none focus:border-cyan-400/50 text-sm appearance-none min-w-[170px] cursor-pointer"
+                >
+                  <option value="Team Name">Sort: Team Name (A-Z)</option>
+                  <option value="Team ID">Sort: Team ID</option>
+                  <option value="PS ID">Sort: PS ID</option>
+                  <option value="Total Commits">Sort: Total Commits</option>
+                </select>
+              </div>
             </div>
 
             <div className="space-y-8">
-              {Object.entries(groupedTeams).map(([psId, psTeams]) => (
+              {Object.entries(filteredGroupedTeams).map(([psId, psTeams]) => (
                 <section
                   key={psId}
                   className="rounded-[2rem] bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden"
@@ -712,10 +858,32 @@ export default function AdminDashboardPage() {
                   </div>
                 </section>
               ))}
+              {Object.keys(filteredGroupedTeams).length === 0 && (
+                <div className="p-6 rounded-2xl bg-white/5 border border-white/10 text-white/50 text-sm text-center">
+                  No teams found matching your search.
+                </div>
+              )}
             </div>
           </motion.div>
         )}
       </main>
+
+      <div
+        className={`fixed bottom-6 right-6 z-40 px-5 py-3 rounded-2xl bg-emerald-500/15 border border-emerald-400/40 backdrop-blur-xl text-emerald-200 text-sm font-medium shadow-2xl transition-opacity duration-500 ${
+          showImportToast ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+      >
+        {importToastMessage}
+      </div>
+
+      <div
+        className={`fixed bottom-2 right-6 z-40 inline-flex items-center gap-2 text-xs text-white/70 transition-opacity duration-300 ${
+          isFetchingCommitData ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+      >
+        <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-300" />
+        <span>Fetching commit data...</span>
+      </div>
     </div>
   )
 }
