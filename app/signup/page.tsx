@@ -4,14 +4,14 @@ import React, { useState } from "react";
 import { auth } from "@/src/utils/auth";
 import { useRouter } from "next/navigation";
 import { MeshGradient } from "@paper-design/shaders-react";
-import { Flame, ArrowLeft, Loader2, User, Lock, ShieldAlert } from "lucide-react";
+import { Flame, ArrowLeft, Loader2, User, Lock, Eye, EyeOff } from "lucide-react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -22,7 +22,7 @@ export default function SignupPage() {
     setError("");
 
     try {
-      auth.signup(email, password, isAdmin);
+      auth.signup(email, password, false);
       router.push("/setup");
     } catch (err: any) {
       setError(err.message || "Failed to create account");
@@ -105,28 +105,25 @@ export default function SignupPage() {
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 required
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-black/40 border-2 border-white/10 focus:border-cyan-400/50 rounded-2xl pl-12 pr-5 py-4 text-white placeholder-white/20 focus:outline-none focus:ring-0 transition-all text-sm shadow-inner"
+                className="w-full bg-black/40 border-2 border-white/10 focus:border-cyan-400/50 rounded-2xl pl-12 pr-16 py-4 text-white placeholder-white/20 focus:outline-none focus:ring-0 transition-all text-sm shadow-inner"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] text-cyan-300 hover:text-cyan-200 transition-colors"
+              >
+                {showPassword ? (
+                  <span className="inline-flex items-center gap-1"><EyeOff className="w-3.5 h-3.5" />Hide</span>
+                ) : (
+                  <span className="inline-flex items-center gap-1"><Eye className="w-3.5 h-3.5" />Show</span>
+                )}
+              </button>
             </div>
-          </div>
-
-          <div className="flex items-center gap-3 p-4 bg-white/5 border border-white/10 rounded-2xl">
-            <input
-              type="checkbox"
-              id="isAdmin"
-              checked={isAdmin}
-              onChange={(e) => setIsAdmin(e.target.checked)}
-              className="w-4 h-4 rounded border-white/10 bg-black/40 text-cyan-500 focus:ring-cyan-500/50"
-            />
-            <label htmlFor="isAdmin" className="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
-              <ShieldAlert className="w-4 h-4" />
-              Request Administrator Access
-            </label>
           </div>
 
           <button

@@ -1,16 +1,19 @@
 "use client";
 
 import React, { useState } from "react";
-import { auth } from "@/src/utils/auth";
 import { useRouter } from "next/navigation";
 import { MeshGradient } from "@paper-design/shaders-react";
-import { Flame, ArrowLeft, Loader2, User, Lock } from "lucide-react";
+import { Flame, ArrowLeft, Loader2, User, Lock, Eye, EyeOff } from "lucide-react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 
+const ADMIN_USERNAME = "ignisia-admin";
+const ADMIN_PASSWORD = "ignisia@2026";
+
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -21,10 +24,13 @@ export default function LoginPage() {
     setError("");
 
     try {
-      auth.login(email, password);
-      router.push("/setup");
+      if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+        router.push("/setup");
+      } else {
+        throw new Error("Invalid username or password");
+      }
     } catch (err: any) {
-      setError(err.message || "Invalid email or password");
+      setError(err.message || "Invalid username or password");
     } finally {
       setIsLoading(false);
     }
@@ -82,16 +88,16 @@ export default function LoginPage() {
 
           <div>
             <label className="block text-sm font-medium text-white/80 mb-2 ml-1">
-              Email Address
+              Username
             </label>
             <div className="relative">
               <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
               <input
-                type="email"
+                type="text"
                 required
-                placeholder="name@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 className="w-full bg-black/40 border-2 border-white/10 focus:border-cyan-400/50 rounded-2xl pl-12 pr-5 py-4 text-white placeholder-white/20 focus:outline-none focus:ring-0 transition-all text-sm shadow-inner"
               />
             </div>
@@ -104,13 +110,24 @@ export default function LoginPage() {
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 required
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-black/40 border-2 border-white/10 focus:border-cyan-400/50 rounded-2xl pl-12 pr-5 py-4 text-white placeholder-white/20 focus:outline-none focus:ring-0 transition-all text-sm shadow-inner"
+                className="w-full bg-black/40 border-2 border-white/10 focus:border-cyan-400/50 rounded-2xl pl-12 pr-16 py-4 text-white placeholder-white/20 focus:outline-none focus:ring-0 transition-all text-sm shadow-inner"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] text-cyan-300 hover:text-cyan-200 transition-colors"
+              >
+                {showPassword ? (
+                  <span className="inline-flex items-center gap-1"><EyeOff className="w-3.5 h-3.5" />Hide</span>
+                ) : (
+                  <span className="inline-flex items-center gap-1"><Eye className="w-3.5 h-3.5" />Show</span>
+                )}
+              </button>
             </div>
           </div>
 
@@ -122,15 +139,6 @@ export default function LoginPage() {
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Sign In"}
           </button>
         </form>
-
-        <div className="mt-8 pt-8 border-t border-white/10 text-center">
-          <p className="text-white/40 text-xs">
-            Don't have an account?{" "}
-            <Link href="/signup" className="text-cyan-400 hover:text-cyan-300 transition-colors font-medium">
-              Create one now
-            </Link>
-          </p>
-        </div>
       </motion.div>
     </div>
   );
