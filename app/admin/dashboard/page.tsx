@@ -3,8 +3,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Papa from "papaparse"
-import { LogOut, Upload, FileSpreadsheet, Loader2, ExternalLink, Search, Filter, ArrowUpDown } from "lucide-react"
-import { motion } from "framer-motion"
+import { LogOut, Upload, FileSpreadsheet, Loader2, ExternalLink, Search, Filter, ArrowUpDown, Menu, X } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
 import { VideoBackground } from "@/components/ui/video-background"
 
 interface Team {
@@ -144,6 +144,8 @@ export default function AdminDashboardPage() {
   const [search, setSearch] = useState("")
   const [combinedFilter, setCombinedFilter] = useState<AdminCombinedFilter>("All")
   const [sortKey, setSortKey] = useState<AdminSortKey>("Team Name")
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(false)
   const [teams, setTeams] = useState<Team[]>([])
   const [pat, setPat] = useState("")
   const [rateLimit, setRateLimit] = useState<{ remaining: string; limit: string }>({ remaining: "--", limit: "--" })
@@ -209,6 +211,11 @@ export default function AdminDashboardPage() {
     const savedPat = localStorage.getItem(ADMIN_PAT_KEY)?.trim() || ""
     setPat(savedPat)
   }, [isAuthenticated])
+
+  useEffect(() => {
+    document.body.classList.toggle("menu-open", mobileNavOpen)
+    return () => document.body.classList.remove("menu-open")
+  }, [mobileNavOpen])
 
   const handleLogout = () => {
     localStorage.removeItem("admin-auth")
@@ -602,36 +609,117 @@ export default function AdminDashboardPage() {
     <div className="min-h-screen relative bg-[#02020A] flex flex-col font-sans overflow-x-hidden">
       <VideoBackground />
 
-      <div className="fixed top-6 left-8 z-20">
-        <span className="text-xl font-black text-white tracking-tighter uppercase">Ignisia 2026 — Admin</span>
-      </div>
+      <AnimatePresence>
+        {mobileNavOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="md:hidden fixed inset-0 z-50"
+          >
+            <button
+              type="button"
+              aria-label="Close admin mobile menu"
+              onClick={() => setMobileNavOpen(false)}
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ duration: 0.3, ease: "easeInOut" }}
+              className="absolute right-3 top-3 bottom-3 h-auto w-[82%] max-w-sm rounded-xl bg-white/10 border border-white/20 backdrop-blur-xl shadow-lg p-5"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-base font-bold uppercase tracking-wide text-white">Admin Menu</h2>
+                <button
+                  type="button"
+                  onClick={() => setMobileNavOpen(false)}
+                  className="h-10 w-10 rounded-full border border-white/20 bg-white/10 text-white flex items-center justify-center"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
 
-      <div className="fixed top-6 right-8 z-20 flex items-center gap-3">
-        {pat ? (
-          <span className="text-[11px] text-white/70 font-medium">API: {rateLimit.remaining} / {rateLimit.limit}</span>
-        ) : (
-          <span className="text-[11px] text-yellow-300 font-medium">API: No PAT</span>
+              <div className="space-y-3">
+                {pat ? (
+                  <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-xs text-white/70 font-mono uppercase tracking-wider shadow-lg">
+                    API: {rateLimit.remaining} / {rateLimit.limit}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-yellow-300/20 bg-yellow-500/10 px-4 py-3 text-xs text-yellow-300 font-medium uppercase tracking-wider">
+                    API: No PAT
+                  </div>
+                )}
+
+                {teams.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleLoadNewData()
+                      setMobileNavOpen(false)
+                    }}
+                    className="w-full px-4 py-3 rounded-2xl bg-white/10 border border-white/20 text-white text-sm font-medium"
+                  >
+                    Import New Data
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="w-full px-4 py-3 rounded-2xl bg-white/10 border border-white/20 text-white text-sm font-medium flex items-center justify-center gap-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
-        {teams.length > 0 && (
+      </AnimatePresence>
+
+      <header className="sticky top-3 z-30 px-3 sm:px-4 md:px-6">
+        <div className="max-w-7xl mx-auto rounded-3xl bg-white/10 border border-white/20 backdrop-blur-xl shadow-lg px-4 md:px-6 py-3.5 md:py-4 flex items-center gap-3">
+          <span className="text-base sm:text-lg md:text-xl font-black text-white tracking-tighter uppercase">Ignisia 2026 — Admin</span>
+
+          <div className="ml-auto hidden md:flex items-center gap-3">
+            {pat ? (
+              <span className="text-[11px] text-white/70 font-medium">API: {rateLimit.remaining} / {rateLimit.limit}</span>
+            ) : (
+              <span className="text-[11px] text-yellow-300 font-medium">API: No PAT</span>
+            )}
+            {teams.length > 0 && (
+              <button
+                type="button"
+                onClick={handleLoadNewData}
+                className="px-5 py-2 rounded-full bg-transparent text-white/70 text-xs font-medium hover:bg-white/15 hover:text-white transition-all duration-300 ease-in-out whitespace-nowrap"
+              >
+                Import New Data
+              </button>
+            )}
+            <button
+              onClick={handleLogout}
+              className="px-6 py-2 rounded-full bg-transparent text-white/70 text-xs font-medium hover:bg-white/15 hover:text-white transition-all duration-300 ease-in-out flex items-center gap-2 group cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+              Sign Out
+            </button>
+          </div>
+
           <button
             type="button"
-            onClick={handleLoadNewData}
-            className="px-5 py-2 rounded-full bg-transparent text-white/70 text-xs font-medium hover:bg-white/8 hover:text-white transition-all whitespace-nowrap"
+            aria-label="Open admin mobile menu"
+            onClick={() => setMobileNavOpen(true)}
+            className="ml-auto md:hidden h-10 w-10 rounded-full border border-white/20 bg-white/10 backdrop-blur-xl text-white flex items-center justify-center shadow-lg"
           >
-            Import New Data
+            <Menu className="w-4 h-4" />
           </button>
-        )}
-        <button
-          onClick={handleLogout}
-          className="px-6 py-2 rounded-full bg-transparent text-white/70 text-xs font-medium hover:bg-white/8 hover:text-white transition-all flex items-center gap-2 group cursor-pointer"
-        >
-          <LogOut className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
-          Sign Out
-        </button>
-      </div>
+        </div>
+      </header>
 
       {/* Main Content */}
-      <main className="z-10 flex-1 w-full max-w-7xl mx-auto p-6 pt-24">
+      <main className="z-10 flex-1 w-full max-w-7xl mx-auto p-3 sm:p-4 md:p-6 pt-4 md:pt-6">
         {teams.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -642,7 +730,7 @@ export default function AdminDashboardPage() {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className={`relative p-12 rounded-[2.5rem] bg-white/5 backdrop-blur-md border-2 border-dashed transition-all duration-300 flex flex-col items-center text-center gap-6 group ${
+              className={`relative p-8 md:p-12 rounded-[2.5rem] bg-white/10 backdrop-blur-xl border-2 border-dashed transition-all duration-300 ease-in-out flex flex-col items-center text-center gap-6 group ${
                 isDragging ? "border-white/30 bg-white/8 scale-[1.02]" : "border-white/15 hover:border-white/30"
               }`}
             >
@@ -651,7 +739,7 @@ export default function AdminDashboardPage() {
               </div>
 
               <div className="space-y-2">
-                <h2 className="text-2xl font-bold text-white tracking-tight">Import Team Data</h2>
+                <h2 className="text-xl md:text-2xl font-bold text-white tracking-tight">Import Team Data</h2>
                 <p className="text-white/45 text-sm max-w-sm mx-auto leading-relaxed">
                   Upload Excel or CSV with Team ID, Team Name, PS ID, GitHub Repo Link
                 </p>
@@ -669,7 +757,7 @@ export default function AdminDashboardPage() {
                     e.currentTarget.value = ""
                   }}
                 />
-                <div className="px-10 py-4 rounded-2xl bg-gradient-to-r from-[#1E2CFF] to-[#6A3DFF] text-white font-bold text-sm transition-all duration-300 hover:from-[#6A3DFF] hover:to-[#B06CFF] shadow-lg active:scale-95 uppercase tracking-wider">
+                <div className="px-10 py-4 rounded-2xl bg-gradient-to-r from-[#1E2CFF] to-[#6A3DFF] text-white font-bold text-sm transition-all duration-300 hover:from-[#6A3DFF] hover:to-[#B06CFF] shadow-lg active:scale-95 uppercase tracking-wider min-h-12">
                   {isImporting ? "Importing..." : "Select File"}
                 </div>
               </label>
@@ -682,8 +770,8 @@ export default function AdminDashboardPage() {
             {importError && <p className="mt-5 text-red-400 text-sm text-center">{importError}</p>}
           </motion.div>
         ) : (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
-            <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center bg-white/5 border border-white/10 p-4 rounded-2xl backdrop-blur-md shadow-xl w-full">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 md:space-y-8">
+            <div className="hidden md:flex flex-col md:flex-row gap-4 items-stretch md:items-center bg-white/10 border border-white/20 p-4 rounded-2xl backdrop-blur-xl shadow-lg w-full">
               <div className="relative flex-1 min-w-[200px]">
                 <Search className="w-4 h-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -691,7 +779,7 @@ export default function AdminDashboardPage() {
                   placeholder="Search owner/repo..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-2.5 text-white placeholder:text-white/40 focus:outline-none focus:border-white/30 text-sm w-full"
+                  className="w-full bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-3 text-white placeholder:text-white/40 focus:outline-none focus:border-white/30 text-sm w-full"
                 />
               </div>
 
@@ -703,7 +791,7 @@ export default function AdminDashboardPage() {
                   title="Filter"
                   value={combinedFilter}
                   onChange={(e) => setCombinedFilter(e.target.value as AdminCombinedFilter)}
-                  className="bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-2.5 text-white focus:outline-none focus:border-white/30 text-sm appearance-none min-w-[150px] cursor-pointer"
+                  className="bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-3 text-white focus:outline-none focus:border-white/30 text-sm appearance-none min-w-[150px] cursor-pointer"
                 >
                   <option value="All">All Filters</option>
                   <option value="Has Commits">Has Commits</option>
@@ -720,7 +808,7 @@ export default function AdminDashboardPage() {
                   title="Sort Options"
                   value={sortKey}
                   onChange={(e) => setSortKey(e.target.value as AdminSortKey)}
-                  className="bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-2.5 text-white focus:outline-none focus:border-white/30 text-sm appearance-none min-w-[170px] cursor-pointer"
+                  className="bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-3 text-white focus:outline-none focus:border-white/30 text-sm appearance-none min-w-[170px] cursor-pointer"
                 >
                   <option value="Team Name">Sort: Team Name (A-Z)</option>
                   <option value="Team ID">Sort: Team ID</option>
@@ -730,22 +818,203 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            <div className="space-y-8">
+            <div className="md:hidden rounded-2xl bg-white/10 border border-white/20 p-3 backdrop-blur-xl shadow-lg">
+              <button
+                type="button"
+                onClick={() => setMobileControlsOpen((prev) => !prev)}
+                className="w-full rounded-xl border border-white/15 bg-white/8 px-4 py-3 text-white text-sm font-medium flex items-center justify-between"
+              >
+                Controls, Search, and Sort
+                {mobileControlsOpen ? <X className="w-4 h-4" /> : <Filter className="w-4 h-4" />}
+              </button>
+
+              <AnimatePresence>
+                {mobileControlsOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="mt-3 space-y-3"
+                  >
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Search owner/repo..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="w-full bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-3 text-white placeholder:text-white/40 focus:outline-none focus:border-white/30 text-sm"
+                      />
+                    </div>
+
+                    <div className="relative">
+                      <Filter className="w-4 h-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <select
+                        title="Filter"
+                        value={combinedFilter}
+                        onChange={(e) => setCombinedFilter(e.target.value as AdminCombinedFilter)}
+                        className="w-full bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-3 text-white focus:outline-none focus:border-white/30 text-sm appearance-none"
+                      >
+                        <option value="All">All Filters</option>
+                        <option value="Has Commits">Has Commits</option>
+                        <option value="No Commits">No Commits</option>
+                        {availablePsIds.map((psId) => (
+                          <option key={psId} value={`PS:${psId}`}>{`PS ID: ${psId}`}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="relative">
+                      <ArrowUpDown className="w-4 h-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <select
+                        title="Sort Options"
+                        value={sortKey}
+                        onChange={(e) => setSortKey(e.target.value as AdminSortKey)}
+                        className="w-full bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-3 text-white focus:outline-none focus:border-white/30 text-sm appearance-none"
+                      >
+                        <option value="Team Name">Sort: Team Name (A-Z)</option>
+                        <option value="Team ID">Sort: Team ID</option>
+                        <option value="PS ID">Sort: PS ID</option>
+                        <option value="Total Commits">Sort: Total Commits</option>
+                      </select>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <div className="space-y-6 md:space-y-8">
               {Object.entries(filteredGroupedTeams).map(([psId, psTeams]) => (
                 <section
                   key={psId}
-                  className="rounded-[2rem] bg-white/5 backdrop-blur-md border border-white/10 shadow-2xl overflow-hidden"
+                  className="rounded-[2rem] bg-white/10 backdrop-blur-xl border border-white/20 shadow-lg overflow-hidden"
                 >
-                  <div className="px-6 py-5 flex items-center justify-between border-b border-white/10 bg-white/8 backdrop-blur-md border border-white/15 rounded-xl">
-                    <h3 className="text-white font-bold text-sm uppercase tracking-wide">
+                  <div className="px-4 sm:px-6 py-4 md:py-5 flex items-center justify-between border-b border-white/10 bg-white/10 backdrop-blur-xl border border-white/20 rounded-xl shadow-lg">
+                    <h3 className="text-white font-bold text-xs sm:text-sm uppercase tracking-wide">
                       PS ID: {psId} - {psTeams.length} {psTeams.length === 1 ? "Team" : "Teams"}
                     </h3>
                   </div>
 
-                  <div className="overflow-x-auto">
+                  <div className="md:hidden p-4 space-y-3">
+                    {psTeams.map((team) => {
+                      const commitState = teamCommits[getTeamKey(team)]
+                      const isLoading = commitState?.status === "loading"
+                      const isPrivate = commitState?.status === "private"
+                      const isRateLimited = commitState?.status === "rate_limited"
+                      const parsedRepo = extractOwnerRepo(team.repoLink)
+                      const repoDisplay = parsedRepo ? `${parsedRepo.owner}/${parsedRepo.repo}` : team.repoLink
+                      const commitsLink = parsedRepo ? `https://github.com/${parsedRepo.owner}/${parsedRepo.repo}/commits` : null
+
+                      const statusLabel = isLoading
+                        ? "LOADING"
+                        : isRateLimited
+                          ? "RATE LIMITED"
+                          : isPrivate
+                            ? "PRIVATE"
+                            : commitState?.totalCommits && commitState.totalCommits > 0
+                              ? "ACTIVE"
+                              : commitState?.totalCommits === 0
+                                ? "INACTIVE"
+                                : "UNKNOWN"
+
+                      const statusClass = isLoading
+                        ? "bg-white/10 text-white/70 border border-white/15"
+                        : isRateLimited
+                          ? "bg-amber-500/20 text-amber-300 border border-amber-400/40"
+                          : isPrivate
+                            ? "bg-red-500/20 text-red-300 border border-red-400/40"
+                            : commitState?.totalCommits && commitState.totalCommits > 0
+                              ? "bg-emerald-500 text-black"
+                              : "bg-red-500 text-white"
+
+                      const flags: string[] = []
+                      if (isPrivate) flags.push("PRIVATE")
+                      if (isRateLimited) flags.push("RATE LIMITED")
+                      if (!isLoading && !isPrivate && !isRateLimited && commitState?.totalCommits === 0) flags.push("NO COMMITS")
+
+                      const lastPushDisplay = isLoading
+                        ? "..."
+                        : isRateLimited
+                          ? "RATE LIMITED"
+                          : isPrivate
+                            ? "PRIVATE"
+                            : commitState?.lastCommit || "-"
+
+                      const commitDisplay = isLoading
+                        ? "..."
+                        : isRateLimited
+                          ? "RATE LIMITED"
+                          : isPrivate
+                            ? "PRIVATE"
+                            : commitState?.totalCommits?.toString() ?? "-"
+
+                      return (
+                        <article
+                          key={`${team.psId}-${team.teamId}`}
+                          onClick={() => window.open(team.repoLink, "_blank")}
+                          className="rounded-2xl border border-white/20 bg-white/10 backdrop-blur-xl p-4 cursor-pointer shadow-lg"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-[10px] text-[#B06CFF]/80 font-mono uppercase tracking-wider">{team.teamId}</p>
+                              <p className="text-sm font-semibold text-white truncate mt-1">{team.teamName}</p>
+                              <p className="text-xs text-white/65 truncate mt-1">{repoDisplay}</p>
+                            </div>
+                            <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wide ${statusClass}`}>
+                              {statusLabel}
+                            </span>
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                            <div className="rounded-xl bg-white/10 border border-white/20 px-3 py-2">
+                              <p className="text-white/45 uppercase tracking-wider text-[10px]">Last Push</p>
+                              <p className="text-white font-semibold mt-1">{lastPushDisplay}</p>
+                            </div>
+                            <div className="rounded-xl bg-white/10 border border-white/20 px-3 py-2">
+                              <p className="text-white/45 uppercase tracking-wider text-[10px]">Commit Count</p>
+                              <p className="text-white font-semibold mt-1">{commitDisplay}</p>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 flex items-center justify-between gap-2">
+                            <div className="flex flex-wrap gap-1.5 min-h-[20px]">
+                              {flags.length > 0 ? (
+                                flags.map((flag) => (
+                                  <span
+                                    key={`${team.teamId}-${flag}`}
+                                    className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-white/10 border border-white/15 text-white/80"
+                                  >
+                                    {flag}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-white/30 text-[10px]">-</span>
+                              )}
+                            </div>
+
+                            {commitsLink && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  window.open(commitsLink, "_blank")
+                                }}
+                                className="text-[#B06CFF] inline-flex items-center gap-1 text-xs"
+                              >
+                                Commits
+                                <ExternalLink className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </article>
+                      )
+                    })}
+                  </div>
+
+                  <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                       <thead>
-                        <tr className="text-[10px] uppercase tracking-wider border-b border-white/10 bg-white/8">
+                        <tr className="text-[10px] uppercase tracking-wider border-b border-white/10 bg-white/10">
                           <th className="py-4 px-6 font-black text-white/40 w-28">Team ID</th>
                           <th className="py-4 px-6 font-black text-white">Team Name</th>
                           <th className="py-4 px-6 font-black text-white w-64">GitHub Repo</th>
@@ -842,7 +1111,7 @@ export default function AdminDashboardPage() {
                 </section>
               ))}
               {Object.keys(filteredGroupedTeams).length === 0 && (
-                <div className="p-6 rounded-2xl bg-white/5 border border-white/10 text-white/45 text-sm text-center backdrop-blur-md">
+                <div className="p-6 rounded-2xl bg-white/10 border border-white/20 text-white/45 text-sm text-center backdrop-blur-xl shadow-lg">
                   No teams found matching your search.
                 </div>
               )}
@@ -852,7 +1121,7 @@ export default function AdminDashboardPage() {
       </main>
 
       <div
-        className={`fixed bottom-6 right-6 z-40 px-5 py-3 rounded-2xl bg-emerald-500/15 border border-emerald-400/40 backdrop-blur-xl text-emerald-200 text-sm font-medium shadow-2xl transition-opacity duration-500 ${
+        className={`fixed bottom-4 right-3 left-3 md:left-auto md:right-6 z-40 px-5 py-3 rounded-2xl bg-emerald-500/15 border border-emerald-400/40 backdrop-blur-xl text-emerald-200 text-sm font-medium shadow-2xl transition-opacity duration-500 ${
           showImportToast ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
       >
@@ -860,7 +1129,7 @@ export default function AdminDashboardPage() {
       </div>
 
       <div
-        className={`fixed bottom-2 right-6 z-40 inline-flex items-center gap-2 text-xs text-white/70 transition-opacity duration-300 ${
+        className={`fixed bottom-2 right-3 md:right-6 z-40 inline-flex items-center gap-2 text-xs text-white/70 transition-opacity duration-300 ${
           isFetchingCommitData ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
       >

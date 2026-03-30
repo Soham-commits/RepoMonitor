@@ -26,3 +26,23 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+body.menu-open {
+  overflow: hidden;
+}
+
+.glass-surface {
+  background: rgb(255 255 255 / 0.1);
+  border: 1px solid rgb(255 255 255 / 0.2);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.3);
+}
+
+.glass-pill {
+  border-radius: 9999px;
+}
+
+.glass-panel {
+  border-radius: 0.75rem;
+}

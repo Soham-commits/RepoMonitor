@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { usePoller } from "../hooks/usePoller";
 import { RepoRow, getRepoStatusAndDetails, RepoStatus } from "./RepoRow";
-import { Search, Filter, ArrowUpDown, RefreshCw, Download, AlertTriangle, WifiOff, LogOut } from "lucide-react";
+import { Search, Filter, ArrowUpDown, RefreshCw, Download, AlertTriangle, WifiOff, LogOut, Menu, X, ExternalLink } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { auth, TeamProfile } from "../utils/auth";
 import type { FetchRepoDataResult } from "../utils/github";
@@ -21,6 +21,74 @@ interface RepoRowItem {
   data?: FetchRepoDataResult;
   details: ReturnType<typeof getRepoStatusAndDetails>;
   team: TeamProfile;
+}
+
+interface RepoCardFlag {
+  text: string;
+  className: string;
+}
+
+function getRelativePushText(isoString: string | null): string {
+  if (!isoString) return "N/A";
+
+  const pushed = new Date(isoString).getTime();
+  const now = Date.now();
+  const diffMs = now - pushed;
+
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${diffDays}d ago`;
+}
+
+function getStatusBadgeClass(statusText: string): string {
+  if (statusText === "Active") return "bg-green-500 text-black";
+  if (statusText === "Idle") return "bg-yellow-400 text-black";
+  if (statusText === "Inactive") return "bg-red-500 text-white";
+  if (statusText === "Dead") return "bg-white/8 text-white/45 border border-white/15";
+  if (statusText === "TIMEOUT") return "bg-[#6A3DFF] text-black";
+  if (statusText === "Error") return "bg-red-900/50 text-red-200 border border-red-500/30";
+  if (statusText === "PRIVATE") return "bg-white/8 text-white/70 border border-white/15";
+  return "bg-white/8 text-white/45 border border-white/15";
+}
+
+function getCardMeta(item: RepoRowItem): {
+  statusText: string;
+  statusClass: string;
+  lastPushText: string;
+  commitCount: string;
+  flags: RepoCardFlag[];
+} {
+  const { data, details } = item;
+  const isPrivate = data?.error === "not_found" || data?.repoInfo?.visibility === "private";
+  const isTimeout = data?.error === "timeout";
+
+  const flags: RepoCardFlag[] = [];
+  if (isPrivate) {
+    flags.push({ text: "PRIVATE", className: "bg-gray-500 text-white" });
+  } else {
+    if (isTimeout) flags.push({ text: "TIMEOUT", className: "bg-[#6A3DFF] text-black" });
+    if (details.commitsCount === 0 && details.status !== "Loading") {
+      flags.push({ text: "NO COMMITS", className: "bg-red-500 text-white" });
+    }
+    if (details.contributorsCount === 1) {
+      flags.push({ text: "SOLO", className: "bg-yellow-500 text-black" });
+    }
+  }
+
+  const statusText = isPrivate ? "PRIVATE" : details.status === "Timeout" ? "TIMEOUT" : details.status;
+
+  return {
+    statusText,
+    statusClass: getStatusBadgeClass(statusText),
+    lastPushText: isPrivate ? "-" : getRelativePushText(details.lastPushIso),
+    commitCount: isPrivate ? "-" : details.status === "Loading" ? "-" : String(details.commitsCount),
+    flags,
+  };
 }
 
 function parseRepoKey(repoLink: string): string | null {
@@ -71,6 +139,13 @@ export function Dashboard({ repos, pat, teams }: DashboardProps) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"All" | RepoStatus>("All");
   const [sortKey, setSortKey] = useState<SortKey>("Name");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
+
+  useEffect(() => {
+    document.body.classList.toggle("menu-open", mobileMenuOpen);
+    return () => document.body.classList.remove("menu-open");
+  }, [mobileMenuOpen]);
 
   const formatCountdown = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -261,28 +336,120 @@ export function Dashboard({ repos, pat, teams }: DashboardProps) {
   };
 
   return (
-    <div className="min-h-screen relative flex justify-center py-10 px-6 font-sans">
-      <div className="fixed bottom-8 left-8 z-30">
+    <div className="min-h-screen relative flex justify-center py-6 md:py-10 px-3 sm:px-4 md:px-6 font-sans overflow-x-hidden">
+      <div className="fixed bottom-6 left-4 z-30 hidden md:block">
         <button
           onClick={() => {
             auth.logout();
             window.location.href = "/";
           }}
-          className="px-6 py-2 rounded-full bg-white/8 border border-white/10 text-white/70 text-xs font-medium hover:bg-white/10 hover:text-white transition-all flex items-center gap-2 backdrop-blur-xl group cursor-pointer"
+          className="px-6 py-2 rounded-full bg-white/10 border border-white/20 text-white/75 text-xs font-medium hover:bg-white/15 hover:text-white transition-all duration-300 ease-in-out flex items-center gap-2 backdrop-blur-xl group cursor-pointer shadow-lg"
         >
           <LogOut className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
           Sign Out
         </button>
       </div>
 
-      <div className="z-10 w-full max-w-[1600px] flex flex-col gap-8">
-        <div className="flex items-center gap-4">
-          <h1 className="text-3xl font-black text-white tracking-tighter uppercase">Monitor Dashboard</h1>
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="md:hidden fixed inset-0 z-50"
+          >
+            <button
+              type="button"
+              aria-label="Close menu"
+              onClick={() => setMobileMenuOpen(false)}
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ duration: 0.3, ease: "easeInOut" }}
+              className="absolute right-3 top-3 bottom-3 h-auto w-[82%] max-w-sm rounded-xl bg-white/10 border border-white/20 backdrop-blur-xl shadow-lg p-5"
+            >
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-base font-bold uppercase tracking-wide text-white">Dashboard Menu</h2>
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="h-10 w-10 rounded-full border border-white/20 bg-white/10 text-white flex items-center justify-center"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-xs text-white/70 font-mono uppercase tracking-wider shadow-lg">
+                  API: <span className="text-cyan-400">{apiRemainingDisplay}</span> / {rateLimitState.limit}
+                </div>
+                <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-xs text-white/70 font-mono uppercase tracking-wider shadow-lg">
+                  Next Refresh: {pollStatus === "frozen" || pollStatus === "critical" ? "--:--" : formatCountdown(nextPollIn)}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerManualRefresh();
+                    setMobileMenuOpen(false);
+                  }}
+                  disabled={pollStatus === "polling" || pollStatus === "critical"}
+                  className="w-full px-4 py-3 rounded-2xl bg-cyan-500/10 text-cyan-100 border border-cyan-500/20 disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
+                >
+                  <RefreshCw className={`w-4 h-4 ${pollStatus === "polling" ? "animate-spin" : ""}`} />
+                  Refresh Now
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleExportCSV();
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full px-4 py-3 rounded-2xl bg-orange-500/10 text-orange-200 border border-orange-500/20 flex items-center justify-center gap-2 text-sm"
+                >
+                  <Download className="w-4 h-4" />
+                  Export CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    auth.logout();
+                    window.location.href = "/";
+                  }}
+                  className="w-full px-4 py-3 rounded-2xl bg-white/10 text-white border border-white/20 flex items-center justify-center gap-2 text-sm"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-          <div className="ml-auto text-sm text-white/45 space-y-1 bg-white/8 px-4 py-2 rounded-2xl border border-white/10 backdrop-blur-md">
-            <p className="text-right font-mono uppercase tracking-widest text-[10px]">
-              API STATUS: <span className="text-cyan-400">{apiRemainingDisplay}</span> / {rateLimitState.limit}
-            </p>
+      <div className="z-10 w-full max-w-[1600px] flex flex-col gap-5 md:gap-8">
+        <div className="sticky top-3 z-40 rounded-3xl bg-white/10 border border-white/20 backdrop-blur-xl shadow-lg px-4 md:px-6 py-4">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tighter uppercase">Monitor Dashboard</h1>
+            <div className="ml-auto hidden md:block text-sm text-white/45 space-y-1">
+              <p className="text-right font-mono uppercase tracking-widest text-[10px]">
+                API STATUS: <span className="text-cyan-400">{apiRemainingDisplay}</span> / {rateLimitState.limit}
+              </p>
+            </div>
+            <div className="ml-auto md:hidden flex items-center gap-2">
+              <div className="text-[10px] font-mono uppercase tracking-wider text-white/60">
+                API: <span className="text-cyan-400">{apiRemainingDisplay}</span>
+              </div>
+              <button
+                type="button"
+                aria-label="Open mobile menu"
+                onClick={() => setMobileMenuOpen(true)}
+                className="h-10 w-10 rounded-full border border-white/20 bg-white/10 text-white flex items-center justify-center"
+              >
+                <Menu className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -292,10 +459,10 @@ export function Dashboard({ repos, pat, teams }: DashboardProps) {
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="w-full bg-orange-500/10 border border-orange-500/20 text-orange-200 p-4 rounded-2xl flex items-center gap-3 backdrop-blur-md"
+              className="w-full bg-orange-500/10 border border-orange-500/20 text-orange-200 p-3 md:p-4 rounded-2xl flex items-start md:items-center gap-3 backdrop-blur-md"
             >
-              <AlertTriangle className="w-5 h-5 text-orange-400" />
-              <div className="text-sm">
+              <AlertTriangle className="w-5 h-5 text-orange-400 shrink-0 mt-0.5 md:mt-0" />
+              <div className="text-xs md:text-sm">
                 <strong>{pollStatus === "critical" ? "Critical Rate Limit Reached." : "API Rate Limit Warning."}</strong>
                 {pollStatus === "critical"
                   ? " Poller paused to prevent GitHub block. It will resume next hour window."
@@ -304,7 +471,7 @@ export function Dashboard({ repos, pat, teams }: DashboardProps) {
               {pollStatus === "critical" && (
                 <button
                   onClick={retryNow}
-                  className="ml-auto px-4 py-2 rounded-xl bg-orange-500/20 border border-orange-400/30 text-orange-100 text-xs font-bold uppercase tracking-wider hover:bg-orange-500/30 transition-all"
+                  className="ml-auto px-3 py-2 rounded-xl bg-orange-500/20 border border-orange-400/30 text-orange-100 text-xs font-bold uppercase tracking-wider hover:bg-orange-500/30 transition-all"
                 >
                   Retry Now
                 </button>
@@ -317,10 +484,10 @@ export function Dashboard({ repos, pat, teams }: DashboardProps) {
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="w-full bg-red-500/10 border border-red-500/20 text-red-200 p-4 rounded-2xl flex items-center gap-3 backdrop-blur-md"
+              className="w-full bg-red-500/10 border border-red-500/20 text-red-200 p-3 md:p-4 rounded-2xl flex items-start md:items-center gap-3 backdrop-blur-md"
             >
-              <WifiOff className="w-5 h-5 text-red-400" />
-              <div className="text-sm">
+              <WifiOff className="w-5 h-5 text-red-400 shrink-0 mt-0.5 md:mt-0" />
+              <div className="text-xs md:text-sm">
                 <strong>Network connectivity offline.</strong> Poller is frozen. Displaying cache from{" "}
                 {lastPollTime ? lastPollTime.toLocaleTimeString() : "last check"}.
               </div>
@@ -328,30 +495,30 @@ export function Dashboard({ repos, pat, teams }: DashboardProps) {
           )}
         </AnimatePresence>
 
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="p-6 rounded-3xl bg-white/8 backdrop-blur-md border border-white/10 flex flex-col gap-1.5 shadow-xl">
-            <span className="text-sm text-cyan-100 font-medium">Total Teams</span>
-            <span className="text-3xl font-bold text-white">{stats.total}</span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
+          <div className="p-4 md:p-6 rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 flex flex-col gap-1.5 shadow-lg">
+            <span className="text-xs md:text-sm text-cyan-100 font-medium">Total Teams</span>
+            <span className="text-2xl md:text-3xl font-bold text-white">{stats.total}</span>
           </div>
-          <div className="p-6 rounded-3xl bg-white/8 backdrop-blur-md border border-white/10 flex flex-col gap-1.5 shadow-xl">
-            <span className="text-sm text-green-200 font-medium">Active</span>
-            <span className="text-3xl font-bold text-green-400">{stats.active}</span>
+          <div className="p-4 md:p-6 rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 flex flex-col gap-1.5 shadow-lg">
+            <span className="text-xs md:text-sm text-green-200 font-medium">Active</span>
+            <span className="text-2xl md:text-3xl font-bold text-green-400">{stats.active}</span>
           </div>
-          <div className="p-6 rounded-3xl bg-white/8 backdrop-blur-md border border-white/10 flex flex-col gap-1.5 shadow-xl">
-            <span className="text-sm text-yellow-200 font-medium">Idle</span>
-            <span className="text-3xl font-bold text-yellow-400">{stats.idle}</span>
+          <div className="p-4 md:p-6 rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 flex flex-col gap-1.5 shadow-lg">
+            <span className="text-xs md:text-sm text-yellow-200 font-medium">Idle</span>
+            <span className="text-2xl md:text-3xl font-bold text-yellow-400">{stats.idle}</span>
           </div>
-          <div className="p-6 rounded-3xl bg-white/8 backdrop-blur-md border border-white/10 flex flex-col gap-1.5 shadow-xl">
-            <span className="text-sm text-red-200 font-medium">No Activity</span>
-            <span className="text-3xl font-bold text-red-400">{stats.inactive}</span>
+          <div className="p-4 md:p-6 rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 flex flex-col gap-1.5 shadow-lg">
+            <span className="text-xs md:text-sm text-red-200 font-medium">No Activity</span>
+            <span className="text-2xl md:text-3xl font-bold text-red-400">{stats.inactive}</span>
           </div>
-          <div className="p-6 rounded-3xl bg-white/8 backdrop-blur-md border border-white/10 flex flex-col gap-1.5 shadow-xl">
-            <span className="text-sm text-white/70 font-medium">Dead</span>
-            <span className="text-3xl font-bold text-white">{stats.dead}</span>
+          <div className="p-4 md:p-6 rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 flex flex-col gap-1.5 shadow-lg">
+            <span className="text-xs md:text-sm text-white/70 font-medium">Dead</span>
+            <span className="text-2xl md:text-3xl font-bold text-white">{stats.dead}</span>
           </div>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center bg-white/5 border border-white/10 p-4 rounded-2xl backdrop-blur-md shadow-xl w-full">
+        <div className="hidden md:flex flex-col md:flex-row gap-4 items-stretch md:items-center bg-white/10 border border-white/20 p-4 rounded-2xl backdrop-blur-xl shadow-lg w-full">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="w-4 h-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -359,7 +526,7 @@ export function Dashboard({ repos, pat, teams }: DashboardProps) {
               placeholder="Search team, PS ID, owner/repo..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-2.5 text-white placeholder:text-white/40 focus:outline-none focus:border-white/30 text-sm"
+              className="w-full bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-3 text-white placeholder:text-white/40 focus:outline-none focus:border-white/30 text-sm"
             />
           </div>
 
@@ -371,7 +538,7 @@ export function Dashboard({ repos, pat, teams }: DashboardProps) {
               title="Status Filter"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as "All" | RepoStatus)}
-              className="bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-2.5 text-white focus:outline-none focus:border-white/30 text-sm appearance-none min-w-[140px] cursor-pointer"
+              className="bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-3 text-white focus:outline-none focus:border-white/30 text-sm appearance-none min-w-[140px] cursor-pointer"
             >
               <option value="All">All Statuses</option>
               <option value="Active">Active</option>
@@ -387,7 +554,7 @@ export function Dashboard({ repos, pat, teams }: DashboardProps) {
               title="Sort Options"
               value={sortKey}
               onChange={(e) => setSortKey(e.target.value as SortKey)}
-              className="bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-2.5 text-white focus:outline-none focus:border-white/30 text-sm appearance-none min-w-[170px] cursor-pointer"
+              className="bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-3 text-white focus:outline-none focus:border-white/30 text-sm appearance-none min-w-[170px] cursor-pointer"
             >
               <option value="Name">Sort: Name (A-Z)</option>
               <option value="Hackathon Commits">Sort: Hackathon Commits</option>
@@ -409,39 +576,167 @@ export function Dashboard({ repos, pat, teams }: DashboardProps) {
             <button
               onClick={triggerManualRefresh}
               disabled={pollStatus === "polling" || pollStatus === "critical"}
-              className="px-4 py-2.5 rounded-xl bg-cyan-500/10 text-cyan-100 font-medium border border-cyan-500/20 hover:bg-cyan-500/20 disabled:opacity-50 transition-colors flex items-center gap-2 text-sm"
+              className="px-4 py-3 rounded-xl bg-cyan-500/10 text-cyan-100 font-medium border border-cyan-500/20 hover:bg-cyan-500/20 disabled:opacity-50 transition-colors flex items-center gap-2 text-sm"
             >
               <RefreshCw className={`w-4 h-4 ${pollStatus === "polling" ? "animate-spin" : ""}`} />
-              <span className="whitespace-nowrap hidden sm:inline">Refresh Now</span>
+              <span className="whitespace-nowrap">Refresh Now</span>
             </button>
 
             <button
               onClick={handleExportCSV}
-              className="px-4 py-2.5 rounded-xl bg-orange-500/10 text-orange-200 font-medium border border-orange-500/20 hover:bg-orange-500/20 transition-colors flex items-center gap-2 text-sm"
+              className="px-4 py-3 rounded-xl bg-orange-500/10 text-orange-200 font-medium border border-orange-500/20 hover:bg-orange-500/20 transition-colors flex items-center gap-2 text-sm"
             >
               <Download className="w-4 h-4" />
-              <span className="whitespace-nowrap hidden sm:inline">Export CSV</span>
+              <span className="whitespace-nowrap">Export CSV</span>
             </button>
           </div>
         </div>
 
-        <div className="space-y-8">
+        <div className="md:hidden rounded-2xl bg-white/10 border border-white/20 p-3 backdrop-blur-xl shadow-lg">
+          <button
+            type="button"
+            onClick={() => setMobileControlsOpen((prev) => !prev)}
+            className="w-full rounded-xl border border-white/15 bg-white/8 px-4 py-3 text-white text-sm font-medium flex items-center justify-between"
+          >
+            Controls, Search, and Sort
+            {mobileControlsOpen ? <X className="w-4 h-4" /> : <Filter className="w-4 h-4" />}
+          </button>
+          <AnimatePresence>
+            {mobileControlsOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="mt-3 space-y-3"
+              >
+                <div className="relative">
+                  <Search className="w-4 h-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search team, PS ID, owner/repo..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-3 text-white placeholder:text-white/40 focus:outline-none focus:border-white/30 text-sm"
+                  />
+                </div>
+                <div className="relative">
+                  <Filter className="w-4 h-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <select
+                    title="Status Filter"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as "All" | RepoStatus)}
+                    className="w-full bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-3 text-white focus:outline-none focus:border-white/30 text-sm appearance-none"
+                  >
+                    <option value="All">All Statuses</option>
+                    <option value="Active">Active</option>
+                    <option value="Idle">Idle</option>
+                    <option value="Inactive">Inactive</option>
+                    <option value="Dead">Dead</option>
+                  </select>
+                </div>
+                <div className="relative">
+                  <ArrowUpDown className="w-4 h-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <select
+                    title="Sort Options"
+                    value={sortKey}
+                    onChange={(e) => setSortKey(e.target.value as SortKey)}
+                    className="w-full bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-3 text-white focus:outline-none focus:border-white/30 text-sm appearance-none"
+                  >
+                    <option value="Name">Sort: Name (A-Z)</option>
+                    <option value="Hackathon Commits">Sort: Hackathon Commits</option>
+                    <option value="Last Push">Sort: Last Push</option>
+                    <option value="Contributors">Sort: Contributors</option>
+                  </select>
+                </div>
+                <div className="rounded-xl bg-white/8 border border-white/10 px-4 py-3 text-xs font-mono uppercase tracking-wider text-cyan-300">
+                  Next Refresh: {pollStatus === "frozen" || pollStatus === "critical" ? "--:--" : formatCountdown(nextPollIn)}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <div className="space-y-6 md:space-y-8">
           {groupedFilteredAndSorted.length > 0 ? (
             groupedFilteredAndSorted.map(([psId, items]) => (
-              <section key={psId} className="rounded-[2rem] bg-white/5 backdrop-blur-md border border-white/10 shadow-2xl overflow-hidden">
-                <div className="px-6 py-5 border-b border-white/10">
-                  <div className="bg-white/8 backdrop-blur-md border border-white/15 rounded-xl px-5 py-3 flex items-center justify-between">
-                    <h3 className="text-white font-bold text-sm uppercase tracking-wide">PS ID: {psId}</h3>
+              <section key={psId} className="rounded-[2rem] bg-white/10 backdrop-blur-xl border border-white/20 shadow-lg overflow-hidden">
+                <div className="px-4 sm:px-6 py-4 md:py-5 border-b border-white/10">
+                  <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-xl px-4 sm:px-5 py-3 flex items-center justify-between shadow-lg">
+                    <h3 className="text-white font-bold text-xs sm:text-sm uppercase tracking-wide">PS ID: {psId}</h3>
                     <span className="text-white/45 text-xs font-medium">
                       {items.length} {items.length === 1 ? "Team" : "Teams"}
                     </span>
                   </div>
                 </div>
 
-                <div className="overflow-x-auto custom-scrollbar">
+                <div className="md:hidden px-4 py-4 space-y-3">
+                  {items.map((item, index) => {
+                    const [ownerName, repoName] = item.repoKey.split("/");
+                    const card = getCardMeta(item);
+
+                    return (
+                      <article key={item.repoKey} className="rounded-2xl border border-white/20 bg-white/10 backdrop-blur-xl p-4 shadow-lg">
+                        <div className="flex items-start justify-between gap-3">
+                          <a
+                            href={`https://github.com/${item.repoKey}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="min-w-0 text-white font-semibold leading-tight"
+                          >
+                            <span className="block text-white/70 text-xs">#{index + 1}</span>
+                            <span className="block truncate text-white/80 text-xs">{ownerName}/</span>
+                            <span className="block truncate text-sm">{repoName || item.repoKey}</span>
+                          </a>
+                          <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wide ${card.statusClass}`}>
+                            {card.statusText}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                          <div className="rounded-xl bg-white/10 border border-white/20 px-3 py-2">
+                            <p className="text-white/45 uppercase tracking-wider text-[10px]">Last Push</p>
+                            <p className="text-white font-semibold mt-1">{card.lastPushText}</p>
+                          </div>
+                          <div className="rounded-xl bg-white/10 border border-white/20 px-3 py-2">
+                            <p className="text-white/45 uppercase tracking-wider text-[10px]">Hackathon Commits</p>
+                            <p className="text-white font-semibold mt-1">{card.commitCount}</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between gap-2">
+                          <div className="flex flex-wrap gap-1.5 min-h-[20px]">
+                            {card.flags.length > 0 ? (
+                              card.flags.map((flag) => (
+                                <span
+                                  key={`${item.repoKey}-${flag.text}`}
+                                  className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide ${flag.className}`}
+                                >
+                                  {flag.text}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-white/30 text-[10px]">-</span>
+                            )}
+                          </div>
+                          <a
+                            href={`https://github.com/${item.repoKey}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[#B06CFF] inline-flex items-center gap-1 text-xs"
+                          >
+                            Open
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+
+                <div className="hidden md:block overflow-x-auto custom-scrollbar">
                   <table className="w-full text-left border-collapse table-fixed min-w-[1300px]">
                     <thead>
-                      <tr className="bg-white/8 border-b border-white/10 text-[10px] uppercase tracking-wider">
+                      <tr className="bg-white/10 border-b border-white/10 text-[10px] uppercase tracking-wider">
                         <th className="py-5 px-2 font-black text-white/40 text-center w-12">#</th>
                         <th className="py-5 px-4 font-black text-white w-56">Repository</th>
                         <th className="py-5 px-3 font-black text-white w-28">Last Push</th>
@@ -470,7 +765,7 @@ export function Dashboard({ repos, pat, teams }: DashboardProps) {
               </section>
             ))
           ) : (
-            <div className="w-full bg-white/5 border border-white/10 rounded-[2rem] p-12 text-center text-white/45 italic backdrop-blur-md shadow-2xl">
+            <div className="w-full bg-white/10 border border-white/20 rounded-[2rem] p-8 md:p-12 text-center text-white/45 italic backdrop-blur-xl shadow-lg">
               No teams found matching your filters.
             </div>
           )}
