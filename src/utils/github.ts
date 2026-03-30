@@ -163,8 +163,9 @@ async function fetchWithRetry(
       throw new DOMException("Aborted", "AbortError");
     }
 
+    const timeoutSignal = AbortSignal.timeout(8000);
+
     try {
-      const timeoutSignal = AbortSignal.timeout(8000);
       const combinedSignal = signal
         ? AbortSignal.any([signal, timeoutSignal])
         : timeoutSignal;
