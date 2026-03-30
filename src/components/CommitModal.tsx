@@ -100,23 +100,23 @@ export function CommitModal({ repoKey, pat, onClose }: CommitModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-md flex items-center justify-center px-6"
+      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-md flex items-center justify-center px-6"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[700px] max-h-[85vh] bg-white/5 border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col backdrop-blur-xl relative"
+        className="w-full max-w-[700px] max-h-[85vh] bg-white/10 border border-white/15 rounded-3xl shadow-2xl overflow-hidden flex flex-col backdrop-blur-xl relative"
         onClick={(event) => event.stopPropagation()}
       >
         {/* Glow accent */}
-        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent" />
+        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-[#1E2CFF]/50 to-transparent" />
 
-        <div className="flex items-center justify-between px-8 py-6 border-b border-white/10">
+        <div className="flex items-center justify-between px-8 py-6 border-b border-white/15">
           <div className="flex flex-col gap-1">
             <a
               href={`https://github.com/${repoKey}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-white font-bold hover:text-cyan-400 transition-colors tracking-tight"
+              className="text-white font-bold hover:text-[#1E2CFF] transition-colors tracking-tight"
             >
               {repoKey}
             </a>
@@ -125,7 +125,7 @@ export function CommitModal({ repoKey, pat, onClose }: CommitModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="p-2.5 rounded-full border border-white/10 text-white/40 hover:text-white hover:border-white/30 hover:bg-white/5 transition-all"
+            className="p-2.5 rounded-full border border-white/15 text-white/45 hover:text-white hover:border-white/30 hover:bg-white/8 transition-all"
             title="Close"
           >
             <X className="w-4 h-4" />
@@ -135,7 +135,7 @@ export function CommitModal({ repoKey, pat, onClose }: CommitModalProps) {
         <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4 custom-scrollbar">
           {state === "loading" && (
             <div className="flex flex-col items-center justify-center gap-4 text-white/40 py-20">
-              <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
+              <Loader2 className="w-8 h-8 animate-spin text-[#1E2CFF]" />
               <p className="text-sm font-light italic tracking-wide">Syncing intelligence data...</p>
             </div>
           )}
@@ -166,9 +166,9 @@ export function CommitModal({ repoKey, pat, onClose }: CommitModalProps) {
             return (
               <div
                 key={commit.sha}
-                className="flex gap-4 p-4 rounded-2xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/10 transition-all group/item shadow-sm"
+                className="flex gap-4 p-4 rounded-2xl border border-white/15 bg-white/8 hover:bg-white/10 hover:border-white/30 transition-all group/item shadow-sm"
               >
-                <div className="mt-1.5 w-2 h-2 rounded-full shrink-0 shadow-sm bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.4)]" />
+                <div className="mt-1.5 w-2 h-2 rounded-full shrink-0 shadow-sm bg-[#1E2CFF] shadow-[0_0_8px_rgba(30,44,255,0.45)]" />
                 <div className="flex-1 min-w-0">
                   <div className="text-white/90 text-sm leading-relaxed font-light">
                     {commit.commit.message}
@@ -185,7 +185,7 @@ export function CommitModal({ repoKey, pat, onClose }: CommitModalProps) {
                       href={`https://github.com/${owner}/${repo}/commit/${commit.sha}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-cyan-400 hover:text-cyan-300 transition-colors underline decoration-cyan-400/20 underline-offset-4"
+                      className="text-[#1E2CFF] hover:text-[#B06CFF] transition-colors underline decoration-[#1E2CFF]/20 underline-offset-4"
                     >
                       View Node
                     </a>
@@ -205,11 +205,11 @@ export function CommitModal({ repoKey, pat, onClose }: CommitModalProps) {
           background: transparent;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.05);
+          background: #6A3DFF0D;
           border-radius: 10px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.1);
+          background: #B06CFF1A;
         }
       `}} />
     </div>

@@ -8,7 +8,7 @@ export default function APISection() {
     <section id="event-stats" className="relative z-20 max-w-7xl mx-auto px-6 py-32 mb-20">
       <div className="grid lg:grid-cols-2 gap-16 items-stretch">
         <motion.div
-          className="p-10 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-xl flex flex-col justify-center"
+          className="p-10 rounded-3xl bg-white/5 border border-white/15 backdrop-blur-md flex flex-col justify-center"
           initial={{ opacity: 0, x: -30 }}
           whileInView={{ opacity: 1, x: 0 }}
           viewport={{ once: true }}
@@ -16,7 +16,7 @@ export default function APISection() {
           style={{ willChange: "transform", transform: "translateZ(0)" }}
         >
           <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
-            Built for <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-orange-400">Ignisia 2026</span>
+            Built for <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#1E2CFF] to-[#B06CFF]">Ignisia 2026</span>
           </h2>
           <p className="text-xl text-white/90 font-light leading-relaxed mb-8">
             A 24-hour national AI hackathon at MIT World Peace University, Pune. One tool built to keep 100 teams accountable, transparent, and competitive.
@@ -24,7 +24,7 @@ export default function APISection() {
           <motion.div className="flex items-center gap-4 w-full max-w-xl">
             <a href="https://ignisia.tech" target="_blank" rel="noopener noreferrer" className="flex-1">
               <motion.button
-                className="w-full px-8 py-4 rounded-full bg-white/10 border border-white/20 text-white font-medium hover:bg-white/20 transition-all duration-300 backdrop-blur-md cursor-pointer"
+                className="w-full px-8 py-4 rounded-full bg-white/8 border border-white/15 text-white font-medium hover:bg-white/10 transition-all duration-300 backdrop-blur-md cursor-pointer"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
@@ -33,7 +33,7 @@ export default function APISection() {
             </a>
             <Link href="/signup" className="flex-1">
               <motion.button
-                className="w-full px-10 py-4 rounded-full bg-gradient-to-r from-cyan-500 to-orange-500 text-white font-semibold text-sm transition-all duration-300 hover:from-cyan-400 hover:to-orange-400 cursor-pointer shadow-lg hover:shadow-xl"
+                className="w-full px-10 py-4 rounded-full bg-gradient-to-r from-[#1E2CFF] to-[#6A3DFF] text-white font-semibold text-sm transition-all duration-300 hover:from-[#6A3DFF] hover:to-[#B06CFF] cursor-pointer shadow-lg hover:shadow-xl"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
@@ -57,14 +57,14 @@ export default function APISection() {
             { label: "100+ Teams", value: "100+ Teams", sub: "Across 5 problem statements", icon: Users },
             { label: "April 2", value: "April 2", sub: "PS Release & Kickoff", icon: Calendar }
           ].map((stat, i) => (
-            <div key={i} className="p-6 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-xl group hover:border-white/20 hover:bg-white/10 transition-all flex flex-col justify-center">
+            <div key={i} className="p-6 rounded-3xl bg-white/5 border border-white/15 backdrop-blur-md group hover:border-white/30 hover:bg-white/8 transition-all flex flex-col justify-center">
               <div className="flex items-center gap-3 mb-4">
-                <stat.icon className="w-5 h-5 text-orange-400 group-hover:text-cyan-400 transition-colors" />
+                <stat.icon className="w-5 h-5 text-[#B06CFF] group-hover:text-[#1E2CFF] transition-colors" />
                 <span className="text-sm font-medium text-white/70">{stat.label}</span>
               </div>
               <div className="flex items-baseline gap-2">
                 <span className="text-3xl md:text-4xl font-bold text-white">{stat.value}</span>
-                {stat.sub && <span className="text-white/60 font-medium">{stat.sub}</span>}
+                {stat.sub && <span className="text-white/45 font-medium">{stat.sub}</span>}
               </div>
             </div>
           ))}

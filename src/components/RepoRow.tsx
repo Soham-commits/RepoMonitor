@@ -2,14 +2,14 @@
 
 import React, { memo, useEffect, useState } from "react";
 import type { FetchRepoDataResult } from "../utils/github";
-import { AlertTriangle, User, Lock, ExternalLink, MessageSquare } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 
 interface RepoRowProps {
   index: number;
   repoKey: string;
+  teamName?: string;
   data?: FetchRepoDataResult;
   isRefreshing?: boolean;
-  onViewCommits?: (repoKey: string) => void;
 }
 
 export type RepoStatus = "Active" | "Idle" | "Inactive" | "Dead" | "Timeout" | "Error" | "Loading";
@@ -81,7 +81,7 @@ function formatRelativeTime(isoString: string | null): { text: string; colorClas
   return { text, colorClass };
 }
 
-function RepoRowComponent({ index, repoKey, data, isRefreshing = false, onViewCommits }: RepoRowProps) {
+function RepoRowComponent({ index, repoKey, teamName, data, isRefreshing = false }: RepoRowProps) {
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
@@ -103,7 +103,7 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false, onViewCo
     flags.push({ text: "PRIVATE", color: "bg-gray-500 text-white" });
   } else {
     if (isTimeoutFlag) {
-      flags.push({ text: "TIMEOUT", color: "bg-orange-500 text-black" });
+      flags.push({ text: "TIMEOUT", color: "bg-[#6A3DFF] text-black" });
     }
 
     if (commitsCount === 0 && status !== "Loading") {
@@ -126,12 +126,12 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false, onViewCo
   const relativePush = formatRelativeTime(lastPushIso);
 
   return (
-    <tr className={`border-b border-white/5 hover:bg-white/[0.05] transition-colors group ${index % 2 !== 0 ? 'bg-white/[0.02]' : ''}`}>
+    <tr className="border-b border-white/5 bg-transparent hover:bg-white/8 transition-colors group">
       {/* Index + Refresh Indicator */}
       <td className="py-6 px-2 text-white/40 font-mono text-[10px] align-middle whitespace-nowrap text-center">
         <div className="flex items-center justify-center gap-1">
           {isRefreshing && (
-            <div className="w-1 h-1 rounded-full bg-cyan-400 animate-pulse" />
+            <div className="w-1 h-1 rounded-full bg-[#1E2CFF] animate-pulse" />
           )}
           <span className="opacity-50">{index + 1}</span>
         </div>
@@ -139,19 +139,26 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false, onViewCo
 
       {/* Repository */}
       <td className="py-6 px-4 align-middle">
-        <a 
-          href={`https://github.com/${repoKey}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          title={repoKey}
-          className="text-white font-bold hover:text-cyan-400 transition-all inline-flex items-center gap-1.5 text-sm tracking-tight"
-        >
-          <span className="leading-tight">
-            <span className="block text-white/85">{ownerName}/</span>
-            <span className="block text-white">{repoName || repoKey}</span>
-          </span>
-          <ExternalLink className="w-3 h-3 text-cyan-400" />
-        </a>
+        <div className="space-y-1">
+          <a
+            href={`https://github.com/${repoKey}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={repoKey}
+            className="text-white font-bold hover:text-[#1E2CFF] transition-all inline-flex items-center gap-1.5 text-sm tracking-tight"
+          >
+            <span className="leading-tight">
+              <span className="block text-white/85">{ownerName}/</span>
+              <span className="block text-white">{repoName || repoKey}</span>
+            </span>
+            <ExternalLink className="w-3 h-3 text-[#1E2CFF]" />
+          </a>
+          {teamName && (
+            <p className="text-[11px] text-white/45 font-medium leading-tight truncate" title={teamName}>
+              {teamName}
+            </p>
+          )}
+        </div>
       </td>
 
       {/* Last Activity */}
@@ -216,28 +223,17 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false, onViewCo
       {/* Status */}
       <td className="py-6 px-3 align-middle whitespace-nowrap">
         <div className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5
-          ${isPrivateRow ? 'bg-gray-800 text-white/50 border border-white/5' : ''}
+          ${isPrivateRow ? 'bg-white/8 text-white/70 border border-white/15' : ''}
           ${status === 'Active' ? 'bg-green-500 text-black' : ''}
           ${status === 'Idle' ? 'bg-yellow-400 text-black' : ''}
           ${status === 'Inactive' ? 'bg-red-500 text-white' : ''}
-          ${status === 'Dead' ? 'bg-neutral-900 text-white/40 border border-white/5' : ''}
-          ${status === 'Timeout' ? 'bg-orange-500 text-black' : ''}
+          ${status === 'Dead' ? 'bg-white/8 text-white/45 border border-white/15' : ''}
+          ${status === 'Timeout' ? 'bg-[#6A3DFF] text-black' : ''}
           ${status === 'Error' ? 'bg-red-900/50 text-red-200 border border-red-500/30' : ''}
-          ${status === 'Loading' ? 'bg-white/5 text-white/20 border border-white/10' : ''}
+          ${status === 'Loading' ? 'bg-white/8 text-white/45 border border-white/15' : ''}
         `}>
           {statusText}
         </div>
-      </td>
-
-      {/* History Icon */}
-      <td className="py-6 px-2 align-middle whitespace-nowrap text-center">
-        <button
-          type="button"
-          onClick={() => onViewCommits?.(repoKey)}
-          className="inline-flex items-center justify-center w-8 h-8 rounded-xl border border-white/10 text-white/30 hover:text-cyan-400 hover:border-cyan-400/60 transition-all"
-        >
-          <MessageSquare className="w-4 h-4" />
-        </button>
       </td>
 
       {/* Flags */}
@@ -262,6 +258,7 @@ function RepoRowComponent({ index, repoKey, data, isRefreshing = false, onViewCo
 export const RepoRow = memo(RepoRowComponent, (prev, next) => {
   return (
     prev.repoKey === next.repoKey && 
+    prev.teamName === next.teamName &&
     prev.data === next.data && 
     prev.index === next.index &&
     prev.isRefreshing === next.isRefreshing

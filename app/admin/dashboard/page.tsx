@@ -3,9 +3,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Papa from "papaparse"
-import { Flame, LogOut, Upload, FileSpreadsheet, Loader2, ExternalLink, Search, Filter, ArrowUpDown } from "lucide-react"
+import { LogOut, Upload, FileSpreadsheet, Loader2, ExternalLink, Search, Filter, ArrowUpDown } from "lucide-react"
 import { motion } from "framer-motion"
-import { MeshGradient } from "@paper-design/shaders-react"
+import { VideoBackground } from "@/components/ui/video-background"
 
 interface Team {
   teamId: string
@@ -592,63 +592,46 @@ export default function AdminDashboardPage() {
 
   if (isAuthenticated === null) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+      <div className="min-h-screen bg-[#02020A] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-[#1E2CFF] animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen relative bg-black flex flex-col font-sans overflow-x-hidden">
-      {/* Background Gradient Mesh */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <MeshGradient
-          className="absolute inset-0 w-full h-full"
-          colors={["#000000", "#06b6d4", "#0891b2", "#164e63", "#f97316"]}
-          speed={0.3}
-        />
-        <MeshGradient
-          className="absolute inset-0 w-full h-full opacity-60"
-          colors={["#000000", "#ffffff", "#06b6d4", "#f97316"]}
-          speed={0.2}
-        />
+    <div className="min-h-screen relative bg-[#02020A] flex flex-col font-sans overflow-x-hidden">
+      <VideoBackground />
+
+      <div className="fixed top-6 left-8 z-20">
+        <span className="text-xl font-black text-white tracking-tighter uppercase">Ignisia 2026 — Admin</span>
       </div>
 
-      {/* Navbar */}
-      <nav className="z-20 w-full px-8 py-6 flex items-center justify-between bg-transparent sticky top-0">
-        <div className="flex items-center gap-3">
-          <Flame className="w-8 h-8 text-cyan-400" />
-          <span className="text-xl font-black text-white tracking-tighter uppercase">
-            Ignisia 2026 — Admin
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          {pat ? (
-            <span className="text-[11px] text-white/60 font-medium">API: {rateLimit.remaining} / {rateLimit.limit}</span>
-          ) : (
-            <span className="text-[11px] text-yellow-300 font-medium">API: No PAT</span>
-          )}
-          {teams.length > 0 && (
-            <button
-              type="button"
-              onClick={handleLoadNewData}
-              className="border border-white/20 text-white/70 hover:bg-white/10 px-4 py-1.5 rounded-full text-sm transition-all"
-            >
-              ↑ Import New Data
-            </button>
-          )}
+      <div className="fixed top-6 right-8 z-20 flex items-center gap-3">
+        {pat ? (
+          <span className="text-[11px] text-white/70 font-medium">API: {rateLimit.remaining} / {rateLimit.limit}</span>
+        ) : (
+          <span className="text-[11px] text-yellow-300 font-medium">API: No PAT</span>
+        )}
+        {teams.length > 0 && (
           <button
-            onClick={handleLogout}
-            className="px-6 py-2 rounded-full bg-white/5 border border-white/10 text-white/70 text-xs font-medium hover:bg-white/10 hover:text-white transition-all flex items-center gap-2 group cursor-pointer"
+            type="button"
+            onClick={handleLoadNewData}
+            className="px-5 py-2 rounded-full bg-transparent text-white/70 text-xs font-medium hover:bg-white/8 hover:text-white transition-all whitespace-nowrap"
           >
-            <LogOut className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
-            Sign Out
+            Import New Data
           </button>
-        </div>
-      </nav>
+        )}
+        <button
+          onClick={handleLogout}
+          className="px-6 py-2 rounded-full bg-transparent text-white/70 text-xs font-medium hover:bg-white/8 hover:text-white transition-all flex items-center gap-2 group cursor-pointer"
+        >
+          <LogOut className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+          Sign Out
+        </button>
+      </div>
 
       {/* Main Content */}
-      <main className="z-10 flex-1 w-full max-w-7xl mx-auto p-6">
+      <main className="z-10 flex-1 w-full max-w-7xl mx-auto p-6 pt-24">
         {teams.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -659,17 +642,17 @@ export default function AdminDashboardPage() {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className={`relative p-12 rounded-[2.5rem] bg-white/5 backdrop-blur-xl border-2 border-dashed transition-all duration-300 flex flex-col items-center text-center gap-6 group ${
-                isDragging ? "border-cyan-400 bg-cyan-500/10 scale-[1.02]" : "border-white/10 hover:border-white/20"
+              className={`relative p-12 rounded-[2.5rem] bg-white/5 backdrop-blur-md border-2 border-dashed transition-all duration-300 flex flex-col items-center text-center gap-6 group ${
+                isDragging ? "border-white/30 bg-white/8 scale-[1.02]" : "border-white/15 hover:border-white/30"
               }`}
             >
-              <div className="w-20 h-20 rounded-3xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
-                <Upload className={`w-10 h-10 text-cyan-400 ${isDragging ? "animate-bounce" : ""}`} />
+              <div className="w-20 h-20 rounded-3xl bg-[#1E2CFF]/20 border border-[#1E2CFF]/30 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
+                <Upload className={`w-10 h-10 text-[#1E2CFF] ${isDragging ? "animate-bounce" : ""}`} />
               </div>
 
               <div className="space-y-2">
                 <h2 className="text-2xl font-bold text-white tracking-tight">Import Team Data</h2>
-                <p className="text-white/50 text-sm max-w-sm mx-auto leading-relaxed">
+                <p className="text-white/45 text-sm max-w-sm mx-auto leading-relaxed">
                   Upload Excel or CSV with Team ID, Team Name, PS ID, GitHub Repo Link
                 </p>
               </div>
@@ -686,7 +669,7 @@ export default function AdminDashboardPage() {
                     e.currentTarget.value = ""
                   }}
                 />
-                <div className="px-10 py-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-orange-500 text-white font-bold text-sm transition-all duration-300 hover:from-cyan-400 hover:to-orange-400 shadow-lg active:scale-95 uppercase tracking-wider">
+                <div className="px-10 py-4 rounded-2xl bg-gradient-to-r from-[#1E2CFF] to-[#6A3DFF] text-white font-bold text-sm transition-all duration-300 hover:from-[#6A3DFF] hover:to-[#B06CFF] shadow-lg active:scale-95 uppercase tracking-wider">
                   {isImporting ? "Importing..." : "Select File"}
                 </div>
               </label>
@@ -708,7 +691,7 @@ export default function AdminDashboardPage() {
                   placeholder="Search owner/repo..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-cyan-400/50 text-sm w-full"
+                  className="w-full bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-2.5 text-white placeholder:text-white/40 focus:outline-none focus:border-white/30 text-sm w-full"
                 />
               </div>
 
@@ -720,7 +703,7 @@ export default function AdminDashboardPage() {
                   title="Filter"
                   value={combinedFilter}
                   onChange={(e) => setCombinedFilter(e.target.value as AdminCombinedFilter)}
-                  className="bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-white focus:outline-none focus:border-cyan-400/50 text-sm appearance-none min-w-[150px] cursor-pointer"
+                  className="bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-2.5 text-white focus:outline-none focus:border-white/30 text-sm appearance-none min-w-[150px] cursor-pointer"
                 >
                   <option value="All">All Filters</option>
                   <option value="Has Commits">Has Commits</option>
@@ -737,7 +720,7 @@ export default function AdminDashboardPage() {
                   title="Sort Options"
                   value={sortKey}
                   onChange={(e) => setSortKey(e.target.value as AdminSortKey)}
-                  className="bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-white focus:outline-none focus:border-cyan-400/50 text-sm appearance-none min-w-[170px] cursor-pointer"
+                  className="bg-white/8 border border-white/15 rounded-xl pl-9 pr-4 py-2.5 text-white focus:outline-none focus:border-white/30 text-sm appearance-none min-w-[170px] cursor-pointer"
                 >
                   <option value="Team Name">Sort: Team Name (A-Z)</option>
                   <option value="Team ID">Sort: Team ID</option>
@@ -751,9 +734,9 @@ export default function AdminDashboardPage() {
               {Object.entries(filteredGroupedTeams).map(([psId, psTeams]) => (
                 <section
                   key={psId}
-                  className="rounded-[2rem] bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden"
+                  className="rounded-[2rem] bg-white/5 backdrop-blur-md border border-white/10 shadow-2xl overflow-hidden"
                 >
-                  <div className="px-6 py-5 flex items-center justify-between border-b border-white/10 bg-white/5">
+                  <div className="px-6 py-5 flex items-center justify-between border-b border-white/10 bg-white/8 backdrop-blur-md border border-white/15 rounded-xl">
                     <h3 className="text-white font-bold text-sm uppercase tracking-wide">
                       PS ID: {psId} - {psTeams.length} {psTeams.length === 1 ? "Team" : "Teams"}
                     </h3>
@@ -762,7 +745,7 @@ export default function AdminDashboardPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                       <thead>
-                        <tr className="text-[10px] uppercase tracking-wider border-b border-white/10 bg-white/5">
+                        <tr className="text-[10px] uppercase tracking-wider border-b border-white/10 bg-white/8">
                           <th className="py-4 px-6 font-black text-white/40 w-28">Team ID</th>
                           <th className="py-4 px-6 font-black text-white">Team Name</th>
                           <th className="py-4 px-6 font-black text-white w-64">GitHub Repo</th>
@@ -784,11 +767,11 @@ export default function AdminDashboardPage() {
                           <tr
                             key={`${team.psId}-${team.teamId}`}
                             onClick={() => window.open(team.repoLink, "_blank")}
-                            className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors cursor-pointer"
+                            className="border-b border-white/5 last:border-0 bg-transparent hover:bg-white/8 transition-colors cursor-pointer"
                           >
-                            <td className="py-4 px-6 font-mono text-xs text-cyan-300/80">{team.teamId}</td>
+                            <td className="py-4 px-6 font-mono text-xs text-[#B06CFF]/80">{team.teamId}</td>
                             <td className="py-4 px-6 text-white font-semibold">{team.teamName}</td>
-                            <td className="py-4 px-6 text-cyan-300 text-sm whitespace-nowrap">
+                            <td className="py-4 px-6 text-[#B06CFF] text-sm whitespace-nowrap">
                               <div className="inline-flex items-center gap-3 whitespace-nowrap">
                                 <span className="inline-flex items-center gap-2">
                                   Open Repo
@@ -801,14 +784,14 @@ export default function AdminDashboardPage() {
                                       e.stopPropagation()
                                       window.open(commitsLink, "_blank")
                                     }}
-                                    className="text-cyan-200/90 hover:text-cyan-100 underline underline-offset-2 whitespace-nowrap"
+                                    className="text-[#B06CFF]/90 hover:text-[#B06CFF] underline underline-offset-2 whitespace-nowrap"
                                   >
                                     See Commits
                                   </button>
                                 )}
                               </div>
                             </td>
-                            <td className="py-4 px-6 text-center text-white/50">
+                            <td className="py-4 px-6 text-center text-white/45">
                               {isLoading ? (
                                 <span className="animate-pulse">...</span>
                               ) : isRateLimited ? (
@@ -821,7 +804,7 @@ export default function AdminDashboardPage() {
                                 <span className="text-white/40">-</span>
                               )}
                             </td>
-                            <td className="py-4 px-6 text-center text-white/50">
+                            <td className="py-4 px-6 text-center text-white/45">
                               {isLoading ? (
                                 <span className="animate-pulse">...</span>
                               ) : isRateLimited ? (
@@ -836,7 +819,7 @@ export default function AdminDashboardPage() {
                             </td>
                             <td className="py-4 px-6 text-center">
                               {isLoading ? (
-                                <span className="animate-pulse text-white/50">...</span>
+                                <span className="animate-pulse text-white/45">...</span>
                               ) : isRateLimited ? (
                                 <span className="text-amber-400 font-semibold">RATE LIMITED</span>
                               ) : isPrivate ? (
@@ -859,7 +842,7 @@ export default function AdminDashboardPage() {
                 </section>
               ))}
               {Object.keys(filteredGroupedTeams).length === 0 && (
-                <div className="p-6 rounded-2xl bg-white/5 border border-white/10 text-white/50 text-sm text-center">
+                <div className="p-6 rounded-2xl bg-white/5 border border-white/10 text-white/45 text-sm text-center backdrop-blur-md">
                   No teams found matching your search.
                 </div>
               )}
@@ -881,7 +864,7 @@ export default function AdminDashboardPage() {
           isFetchingCommitData ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
       >
-        <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-300" />
+        <Loader2 className="w-3.5 h-3.5 animate-spin text-[#B06CFF]" />
         <span>Fetching commit data...</span>
       </div>
     </div>

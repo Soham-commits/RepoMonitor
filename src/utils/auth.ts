@@ -4,7 +4,15 @@ export interface UserProfile {
   email: string;
   pat: string;
   repos: string[];
+  teams?: TeamProfile[];
   isAdmin: boolean;
+}
+
+export interface TeamProfile {
+  teamId: string;
+  teamName: string;
+  psId: string;
+  repoLink: string;
 }
 
 export interface UserAccount {
@@ -62,7 +70,7 @@ export const auth = {
     return auth.getUsers()[email] || null;
   },
 
-  saveProfile: (pat: string, repos: string[]) => {
+  saveProfile: (pat: string, repos: string[], teams?: TeamProfile[]) => {
     const email = auth.getCurrentUserEmail();
     if (!email) return;
     
@@ -73,6 +81,7 @@ export const auth = {
         email,
         pat,
         repos,
+        teams,
         isAdmin: user.isAdmin
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(users));

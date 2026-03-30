@@ -3,15 +3,15 @@
 import React, { useState, useMemo, useRef } from "react";
 import { fetchRepoInfo } from "../utils/github";
 import { StarButton } from "./StarButton";
-import { Flame, CheckCircle2, XCircle, AlertCircle, Loader2, ArrowLeft } from "lucide-react";
+import { CheckCircle2, XCircle, AlertCircle, Loader2, ArrowLeft } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MeshGradient } from "@paper-design/shaders-react";
 import Link from "next/link";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
+import { TeamProfile } from "../utils/auth";
 
 export interface RepoInputProps {
-  onStart: (repos: string[], pat: string) => void;
+  onStart: (repos: string[], pat: string, teams?: TeamProfile[]) => void;
 }
 
 type ValidationStatus = "idle" | "validating" | "done";
@@ -31,7 +31,24 @@ interface ValidationResult {
   reason?: string;
 }
 
+interface ImportedTeamRecord extends TeamProfile {
+  repoKey: string;
+}
+
+interface ParsedTeamResult {
+  teams: ImportedTeamRecord[];
+  hasRequiredColumns: boolean;
+}
+
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const normalizeHeader = (value: string) =>
+  value.trim().toLowerCase().replace(/\s+/g, "").replace(/_/g, "").replace(/-/g, "");
+
+const findHeaderKey = (headers: string[], aliases: string[]) => {
+  const aliasSet = new Set(aliases.map((alias) => normalizeHeader(alias)));
+  return headers.find((header) => aliasSet.has(normalizeHeader(header)));
+};
 
 function parseRepoUrl(input: string): ParsedUrl {
   let url = input.trim();
@@ -77,6 +94,46 @@ function parseRepoUrl(input: string): ParsedUrl {
   return parsed;
 }
 
+const parseTeamsFromRows = (rows: Record<string, unknown>[]): ParsedTeamResult => {
+  if (!rows.length) {
+    return { teams: [], hasRequiredColumns: false };
+  }
+
+  const headers = Object.keys(rows[0]);
+  const teamIdKey = findHeaderKey(headers, ["Team ID", "team_id", "teamid"]);
+  const teamNameKey = findHeaderKey(headers, ["Team Name", "team_name", "teamname"]);
+  const psIdKey = findHeaderKey(headers, ["PS ID", "ps_id", "psid"]);
+  const repoLinkKey = findHeaderKey(headers, ["GitHub Repo Link", "github_repo", "repo", "repo_link"]);
+
+  if (!teamIdKey || !teamNameKey || !psIdKey || !repoLinkKey) {
+    return { teams: [], hasRequiredColumns: false };
+  }
+
+  const teams = rows
+    .map((row) => {
+      const teamId = String(row[teamIdKey] ?? "").trim();
+      const teamName = String(row[teamNameKey] ?? "").trim();
+      const psId = String(row[psIdKey] ?? "").trim();
+      const repoLink = String(row[repoLinkKey] ?? "").trim();
+      const parsedRepo = parseRepoUrl(repoLink);
+
+      if (!teamId || !teamName || !psId || !repoLink || !parsedRepo.isValidFormat) {
+        return null;
+      }
+
+      return {
+        teamId,
+        teamName,
+        psId,
+        repoLink,
+        repoKey: `${parsedRepo.owner}/${parsedRepo.repo}`,
+      };
+    })
+    .filter((team): team is ImportedTeamRecord => Boolean(team));
+
+  return { teams, hasRequiredColumns: true };
+};
+
 export function RepoInput({ onStart }: RepoInputProps) {
   const [pat, setPat] = useState("");
   const [repoText, setRepoText] = useState("");
@@ -84,6 +141,7 @@ export function RepoInput({ onStart }: RepoInputProps) {
   const [importError, setImportError] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [importedTeams, setImportedTeams] = useState<ImportedTeamRecord[]>([]);
   
   const [status, setStatus] = useState<ValidationStatus>("idle");
   const [results, setResults] = useState<ValidationResult[]>([]);
@@ -135,6 +193,17 @@ export function RepoInput({ onStart }: RepoInputProps) {
     });
   };
 
+  const mergeImportedTeams = (nextTeams: ImportedTeamRecord[]) => {
+    if (!nextTeams.length) return;
+
+    setImportedTeams((prev) => {
+      const merged = new Map<string, ImportedTeamRecord>();
+      prev.forEach((team) => merged.set(team.repoKey, team));
+      nextTeams.forEach((team) => merged.set(team.repoKey, team));
+      return Array.from(merged.values());
+    });
+  };
+
   const finalizeImport = (found: Set<string>) => {
     const repos = Array.from(found);
     if (repos.length === 0) {
@@ -143,6 +212,15 @@ export function RepoInput({ onStart }: RepoInputProps) {
       return;
     }
 
+    const fallbackTeams = repos.map((repoKey, index) => ({
+      teamId: `TEAM-${index + 1}`,
+      teamName: repoKey,
+      psId: "Ungrouped",
+      repoLink: `https://github.com/${repoKey}`,
+      repoKey,
+    }));
+
+    mergeImportedTeams(fallbackTeams);
     appendReposToTextarea(repos);
     setImportMessage(`Found ${repos.length} repo URLs from file`);
     setImportError("");
@@ -167,16 +245,31 @@ export function RepoInput({ onStart }: RepoInputProps) {
     }
 
     if (isCsv) {
-      Papa.parse(file, {
+      Papa.parse<Record<string, unknown>>(file, {
+        header: true,
         skipEmptyLines: true,
         complete: (results) => {
-          const found = new Set<string>();
-          results.data.forEach((row) => {
-            if (Array.isArray(row)) {
-              row.forEach((cell) => extractReposFromValue(cell, found));
-            } else if (row && typeof row === "object") {
-              Object.values(row).forEach((cell) => extractReposFromValue(cell, found));
+          const rows = results.data.filter((row) => Object.values(row ?? {}).some((value) => String(value ?? "").trim() !== ""));
+          const parsedTeams = parseTeamsFromRows(rows);
+
+          if (parsedTeams.hasRequiredColumns) {
+            if (!parsedTeams.teams.length) {
+              setImportError("No valid team rows found in Team ID, Team Name, PS ID, GitHub Repo Link columns");
+              setImportMessage("");
+              return;
             }
+
+            mergeImportedTeams(parsedTeams.teams);
+            appendReposToTextarea(parsedTeams.teams.map((team) => team.repoKey));
+            const uniquePsIds = new Set(parsedTeams.teams.map((team) => team.psId));
+            setImportMessage(`Imported ${parsedTeams.teams.length} teams across ${uniquePsIds.size} PS groups`);
+            setImportError("");
+            return;
+          }
+
+          const found = new Set<string>();
+          rows.forEach((row) => {
+            Object.values(row).forEach((cell) => extractReposFromValue(cell, found));
           });
           finalizeImport(found);
         },
@@ -190,16 +283,35 @@ export function RepoInput({ onStart }: RepoInputProps) {
     try {
       const buffer = await file.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: "array" });
+      const firstSheetName = workbook.SheetNames[0];
+      if (!firstSheetName) {
+        setImportError("No GitHub URLs detected in this file");
+        return;
+      }
+
+      const sheet = workbook.Sheets[firstSheetName];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+      const parsedTeams = parseTeamsFromRows(rows);
+
+      if (parsedTeams.hasRequiredColumns) {
+        if (!parsedTeams.teams.length) {
+          setImportError("No valid team rows found in Team ID, Team Name, PS ID, GitHub Repo Link columns");
+          setImportMessage("");
+          return;
+        }
+
+        mergeImportedTeams(parsedTeams.teams);
+        appendReposToTextarea(parsedTeams.teams.map((team) => team.repoKey));
+        const uniquePsIds = new Set(parsedTeams.teams.map((team) => team.psId));
+        setImportMessage(`Imported ${parsedTeams.teams.length} teams across ${uniquePsIds.size} PS groups`);
+        setImportError("");
+        return;
+      }
+
       const found = new Set<string>();
-
-      workbook.SheetNames.forEach((sheetName) => {
-        const sheet = workbook.Sheets[sheetName];
-        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true }) as unknown[][];
-        rows.forEach((row) => {
-          row.forEach((cell) => extractReposFromValue(cell, found));
-        });
+      rows.forEach((row) => {
+        Object.values(row).forEach((cell) => extractReposFromValue(cell, found));
       });
-
       finalizeImport(found);
     } catch {
       setImportError("No GitHub URLs detected in this file");
@@ -270,7 +382,7 @@ export function RepoInput({ onStart }: RepoInputProps) {
         const { owner, repo, original } = parsed;
         try {
           const res = await fetchRepoInfo(owner, repo, pat || undefined);
-          let itemResult: ValidationResult = {
+          const itemResult: ValidationResult = {
             url: original,
             owner,
             repo,
@@ -321,57 +433,61 @@ export function RepoInput({ onStart }: RepoInputProps) {
     const validRepos = results
       .filter((r) => r.status === "valid" && r.owner && r.repo)
       .map((r) => `${r.owner}/${r.repo}`);
+
+    const importedByRepo = new Map(importedTeams.map((team) => [team.repoKey, team]));
+    const teamsToStore: TeamProfile[] = validRepos.map((repoKey, index) => {
+      const imported = importedByRepo.get(repoKey);
+      if (imported) {
+        return {
+          teamId: imported.teamId,
+          teamName: imported.teamName,
+          psId: imported.psId,
+          repoLink: imported.repoLink,
+        };
+      }
+
+      return {
+        teamId: `TEAM-${index + 1}`,
+        teamName: repoKey,
+        psId: "Ungrouped",
+        repoLink: `https://github.com/${repoKey}`,
+      };
+    });
     
     // Pass valid repos to parent
-    onStart(validRepos, pat);
+    onStart(validRepos, pat, teamsToStore);
     
     // Clear state
     setResults([]);
     setStatus("idle");
     setRepoText("");
     setPat("");
+    setImportedTeams([]);
   };
 
   const validCount = results.filter((r) => r.status === "valid").length;
   const failedCount = results.filter((r) => r.status !== "valid").length;
 
   return (
-    <div className="min-h-screen relative overflow-x-hidden bg-black flex flex-col items-center py-12 px-6 selection:bg-cyan-500/30 font-sans">
+    <div className="min-h-screen relative overflow-x-hidden flex flex-col items-center py-12 px-6 selection:bg-cyan-500/30 font-sans">
       {/* Back Button */}
       <Link href="/" className="absolute top-8 left-8 z-20">
-        <button className="px-6 py-2 rounded-full bg-white/5 border border-white/10 text-white/70 text-xs font-medium hover:bg-white/10 hover:text-white transition-all flex items-center gap-2 backdrop-blur-sm group">
+        <button className="px-6 py-2 rounded-full bg-white/8 border border-white/10 text-white/70 text-xs font-medium hover:bg-white/10 hover:text-white transition-all flex items-center gap-2 backdrop-blur-xl group">
           <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
           Back to Landing
         </button>
       </Link>
 
-      {/* Background Gradient Mesh equivalent to theme */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <MeshGradient
-          className="absolute inset-0 w-full h-full"
-          colors={["#000000", "#06b6d4", "#0891b2", "#164e63", "#f97316"]}
-          speed={0.3}
-        />
-        <MeshGradient
-          className="absolute inset-0 w-full h-full opacity-60"
-          colors={["#000000", "#ffffff", "#06b6d4", "#f97316"]}
-          speed={0.2}
-        />
-      </div>
-
       {/* Header */}
       <div className="z-10 text-center mb-10 flex flex-col items-center pt-8">
-        <div className="flex items-center group cursor-pointer mb-4">
-          <Flame className="w-8 h-8 text-cyan-400 group-hover:text-cyan-300 transition-colors" />
-        </div>
-        <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight mb-2">
-          IgnisEye
+        <h1 className="text-3xl md:text-4xl font-instrument font-bold text-white tracking-tight mb-2">
+          Ignisia
         </h1>
-        <p className="text-white/60 font-light text-sm">Repo Monitor Dashboard Setup</p>
+        <p className="text-white/70 font-light text-sm">Repo Monitor Dashboard Setup</p>
       </div>
 
       {/* Main Card */}
-      <div className="z-10 w-full max-w-3xl bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-md shadow-2xl relative overflow-hidden group">
+      <div className="z-10 w-full max-w-3xl bg-white/5 border border-white/15 rounded-3xl p-8 backdrop-blur-md shadow-2xl relative overflow-hidden group">
         {/* Glow accent */}
         <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent" />
 
@@ -387,7 +503,7 @@ export function RepoInput({ onStart }: RepoInputProps) {
               value={pat}
               onChange={(e) => setPat(e.target.value)}
               disabled={status === "validating"}
-              className="w-full bg-black/40 border-2 border-white/10 focus:border-cyan-400/50 rounded-2xl px-5 py-4 text-white placeholder-white/20 focus:outline-none focus:ring-0 disabled:opacity-50 transition-all font-mono text-sm shadow-inner"
+              className="w-full bg-white/8 border border-white/15 focus:border-white/30 rounded-2xl px-5 py-4 text-white placeholder:text-white/40 focus:outline-none focus:ring-0 disabled:opacity-50 transition-all font-mono text-sm shadow-inner"
             />
           </div>
 
@@ -398,7 +514,7 @@ export function RepoInput({ onStart }: RepoInputProps) {
                 Team Repositories
               </label>
               <div className="flex items-center gap-3">
-                <span className="text-xs text-white/50 font-mono">
+                <span className="text-xs text-white/45 font-mono">
                   {rawLines.length} URLs detected
                 </span>
                 <button
@@ -429,7 +545,7 @@ export function RepoInput({ onStart }: RepoInputProps) {
                 value={repoText}
                 onChange={(e) => setRepoText(e.target.value)}
                 disabled={status === "validating"}
-                className={`w-full h-64 bg-black/40 border-2 rounded-2xl px-5 py-4 text-white placeholder-white/20 focus:outline-none focus:ring-0 resize-y disabled:opacity-50 transition-all font-mono text-sm leading-relaxed shadow-inner ${isDragOver ? "border-cyan-400/70" : "border-white/10 focus:border-cyan-400/50"}`}
+                className={`w-full h-64 bg-white/8 border rounded-2xl px-5 py-4 text-white placeholder:text-white/40 focus:outline-none focus:ring-0 resize-y disabled:opacity-50 transition-all font-mono text-sm leading-relaxed shadow-inner ${isDragOver ? "border-white/30" : "border-white/15 focus:border-white/30"}`}
               />
             </div>
             {(importMessage || importError) && (

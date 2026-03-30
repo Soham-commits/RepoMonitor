@@ -7,7 +7,7 @@ export default function FeaturesSection() {
     <section id="features" className="relative z-20 max-w-7xl mx-auto px-6 py-32">
       <div className="text-center mb-16">
         <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
-          Everything You Need to <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-orange-400">Run a Transparent Hackathon</span>
+          Everything You Need to <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#1E2CFF] to-[#B06CFF]">Run a Transparent Hackathon</span>
         </h2>
       </div>
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -21,18 +21,18 @@ export default function FeaturesSection() {
         ].map((feature, i) => (
           <motion.div
             key={i}
-            className="p-8 rounded-3xl bg-white/5 backdrop-blur-xl border border-white/10 hover:bg-white/10 transition-all group"
+            className="p-8 rounded-3xl bg-white/5 backdrop-blur-md border border-white/15 hover:bg-white/8 transition-all group"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: (i % 3) * 0.1, duration: 0.5 }}
             style={{ willChange: "transform", transform: "translateZ(0)" }}
           >
-            <div className="w-12 h-12 rounded-full bg-cyan-500/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-              <feature.icon className="w-6 h-6 text-cyan-400" />
+            <div className="w-12 h-12 rounded-full bg-[#1E2CFF]/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+              <feature.icon className="w-6 h-6 text-[#1E2CFF]" />
             </div>
             <h3 className="text-xl font-semibold text-white mb-3">{feature.title}</h3>
-            <p className="text-white/90 font-light leading-relaxed">{feature.desc}</p>
+            <p className="text-white/70 font-light leading-relaxed">{feature.desc}</p>
           </motion.div>
         ))}
       </div>

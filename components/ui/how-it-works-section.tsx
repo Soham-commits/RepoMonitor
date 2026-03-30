@@ -16,7 +16,7 @@ export default function HowItWorksSection() {
         ].map((step, i) => (
           <motion.div
             key={i}
-            className="relative p-8 rounded-3xl bg-white/5 backdrop-blur-xl border border-white/10 overflow-hidden group hover:bg-white/10 transition-all"
+            className="relative p-8 rounded-3xl bg-white/5 backdrop-blur-md border border-white/15 overflow-hidden group hover:bg-white/8 transition-all"
             initial={{ opacity: 0, x: -20 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
@@ -27,10 +27,10 @@ export default function HowItWorksSection() {
             <div className="absolute -right-4 -top-8 text-white/5 text-[150px] font-black pointer-events-none select-none transition-transform group-hover:scale-110">
               {step.title}
             </div>
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-500/20 to-orange-500/20 border border-white/10 flex items-center justify-center mb-6 relative z-10 group-hover:bg-white/10 transition-colors">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#1E2CFF]/20 to-[#6A3DFF]/20 border border-white/15 flex items-center justify-center mb-6 relative z-10 group-hover:bg-white/8 transition-colors">
               <step.icon className="w-8 h-8 text-white/90" />
             </div>
-            <p className="text-lg text-white/90 font-medium leading-relaxed relative z-10">{step.desc}</p>
+            <p className="text-lg text-white/70 font-medium leading-relaxed relative z-10">{step.desc}</p>
           </motion.div>
         ))}
       </div>

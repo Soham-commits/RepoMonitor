@@ -3,48 +3,60 @@
 import { useState, useEffect } from "react";
 import { RepoInput } from "@/src/components/RepoInput";
 import { Dashboard } from "@/src/components/Dashboard";
-import { auth, UserProfile } from "@/src/utils/auth";
+import { auth, TeamProfile, UserProfile } from "@/src/utils/auth";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { VideoBackground } from "@/components/ui/video-background";
 
 export default function SetupPage() {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const currentUser = typeof window !== "undefined" ? auth.getCurrentUser() : null;
+  const [profile, setProfile] = useState<UserProfile | null>(() => {
+    if (typeof window === "undefined") return null;
+    return auth.getCurrentUser()?.profile || null;
+  });
   const router = useRouter();
 
   useEffect(() => {
-    const user = auth.getCurrentUser();
-    if (!user) {
+    if (!currentUser) {
       router.push("/login");
-      return;
     }
+  }, [currentUser, router]);
 
-    if (user.profile) {
-      setProfile(user.profile);
-    }
-    setIsLoading(false);
-  }, [router]);
-
-  const handleStartMonitoring = (repos: string[], pat: string) => {
-    auth.saveProfile(pat, repos);
-    setProfile({ email: auth.getCurrentUserEmail() || "", repos, pat, isAdmin: auth.getCurrentUser()?.isAdmin || false });
+  const handleStartMonitoring = (repos: string[], pat: string, teams?: TeamProfile[]) => {
+    auth.saveProfile(pat, repos, teams);
+    setProfile({ email: auth.getCurrentUserEmail() || "", repos, pat, teams, isAdmin: auth.getCurrentUser()?.isAdmin || false });
   };
 
-  if (isLoading) {
+  if (!currentUser) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
-      </div>
+      <>
+        <VideoBackground />
+        <div className="min-h-screen bg-[#02020A] flex items-center justify-center relative z-10">
+          <Loader2 className="w-8 h-8 animate-spin text-[#1E2CFF]" />
+        </div>
+      </>
     );
   }
 
   if (profile) {
-    return <Dashboard repos={profile.repos} pat={profile.pat} />;
+    return (
+      <>
+        <VideoBackground />
+        <div className="relative z-10">
+          <Dashboard repos={profile.repos} pat={profile.pat} teams={profile.teams} />
+        </div>
+      </>
+    );
   }
 
   return (
-    <RepoInput 
-      onStart={handleStartMonitoring} 
-    />
+    <>
+      <VideoBackground />
+      <div className="relative z-10">
+        <RepoInput
+          onStart={handleStartMonitoring}
+        />
+      </div>
+    </>
   );
 }
