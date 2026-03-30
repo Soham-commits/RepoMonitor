@@ -36,7 +36,7 @@ export function getRepoStatusAndDetails(data?: FetchRepoDataResult): {
 
   let status: RepoStatus = "Inactive";
   
-  if (commitsCount === 0 && status !== "Loading") {
+  if (commitsCount === 0) {
     status = "Dead";
   } else if (lastPushIso) {
     const pushed = new Date(lastPushIso).getTime();
