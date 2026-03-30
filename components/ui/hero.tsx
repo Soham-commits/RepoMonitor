@@ -72,8 +72,8 @@ export default function ShaderShowcase() {
       </svg>
 
       {/* Glass Transparent Pill Navbar */}
-      <header className="fixed top-4 md:top-8 left-1/2 -translate-x-1/2 z-50 w-[92%] md:w-[85%] max-w-5xl">
-        <nav className="flex items-center justify-between px-4 md:px-8 py-3 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 shadow-lg transition-all duration-300 ease-in-out">
+      <header className="fixed top-4 md:top-8 left-1/2 -translate-x-1/2 z-50 w-[94%] md:w-[85%] max-w-5xl">
+        <nav className="flex items-center justify-between px-4 sm:px-5 md:px-8 py-3 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 shadow-lg transition-all duration-300 ease-in-out">
           {/* Logo */}
           <Link href="/" className="flex items-center group cursor-pointer">
             <span className="text-white/90 font-instrument serif text-2xl md:text-3xl">Ignisia</span>
@@ -207,11 +207,10 @@ export default function ShaderShowcase() {
 
       {/* Hero Wrapper */}
       <div className="relative z-10 w-full min-h-screen overflow-x-hidden">
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm pointer-events-none" />
         {/* Previous header was here, now replaced by fixed navbar above */}
 
-      <main className="relative z-20 w-full min-h-screen flex items-center justify-center px-4 sm:px-8 pt-24 md:pt-0">
-        <div className="w-full max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-12 md:gap-8">
+      <main className="relative z-20 w-full min-h-screen flex items-center justify-center px-4 sm:px-8 pt-28 pb-12 md:py-0">
+        <div className="w-full max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-10 md:gap-8">
           
           {/* Left Section */}
           <div className="w-full md:w-[60%] flex flex-col items-center md:items-start text-center md:text-left space-y-4 md:space-y-6">
@@ -225,13 +224,13 @@ export default function ShaderShowcase() {
               transition={{ duration: 0.6, delay: 0.2 }}
             >
               <div className="absolute top-0 left-1 right-1 h-px bg-gradient-to-r from-transparent via-[#1E2CFF]/30 to-transparent rounded-full" />
-              <span className="text-white/90 text-sm font-medium relative z-10 tracking-wide">
+              <span className="text-white/90 text-xs sm:text-sm font-medium relative z-10 tracking-wide">
                 Ignisia 2026 — MIT World Peace University
               </span>
             </motion.div>
 
             <motion.h1
-              className="text-4xl md:text-6xl text-white leading-[0.95] tracking-[-0.02em]"
+              className="text-5xl sm:text-6xl md:text-6xl text-white leading-[0.95] tracking-[-0.02em]"
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.4 }}
@@ -254,7 +253,7 @@ export default function ShaderShowcase() {
             </motion.h1>
 
             <motion.p
-              className="text-base sm:text-lg font-playfair font-light text-white/75 leading-relaxed max-w-xl mx-auto md:mx-0"
+              className="text-base sm:text-lg font-playfair font-light text-white/75 leading-relaxed max-w-xl mx-auto md:mx-0 px-2 sm:px-0"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.8 }}
@@ -265,12 +264,12 @@ export default function ShaderShowcase() {
 
           {/* Right Section */}
           <motion.div
-            className="w-full md:w-[35%] flex flex-col items-center md:items-end justify-center gap-4"
+            className="w-full md:w-[35%] flex flex-col items-center md:items-end justify-center gap-4 max-w-md"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 1.0 }}
           >
-            <Link href="/signup" className="w-full sm:w-[80%] md:w-full">
+            <Link href="/signup" className="w-full">
               <motion.button
                 className="w-full px-10 py-4 rounded-full bg-gradient-to-r from-[#1E2CFF] to-[#6A3DFF] text-white font-semibold text-sm transition-all duration-300 ease-in-out hover:scale-105 hover:shadow-[0_0_24px_rgba(30,44,255,0.45)] cursor-pointer uppercase tracking-wider"
                 whileHover={{ scale: 1.05 }}
@@ -279,7 +278,7 @@ export default function ShaderShowcase() {
                 Start Monitoring
               </motion.button>
             </Link>
-            <Link href="/admin" className="w-full sm:w-[80%] md:w-full">
+            <Link href="/admin" className="w-full">
               <motion.button
                 className="w-full px-10 py-4 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 text-white font-medium text-sm transition-all duration-300 ease-in-out hover:scale-105 hover:bg-white/15 cursor-pointer"
                 whileHover={{ scale: 1.05 }}
