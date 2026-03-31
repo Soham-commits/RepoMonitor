@@ -143,7 +143,7 @@ export default function ShaderShowcase() {
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ duration: 0.3, ease: "easeInOut" }}
-              className="absolute right-3 top-3 bottom-3 w-[82%] max-w-sm rounded-xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-lg p-5"
+              className="absolute right-3 top-3 w-fit min-w-[240px] max-w-[60%] h-fit rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-lg p-5"
             >
               <div className="flex items-center justify-between mb-5">
                 <h2 className="text-base font-bold text-white">Navigation</h2>
@@ -184,13 +184,6 @@ export default function ShaderShowcase() {
                   className="rounded-xl px-4 py-3 border border-white/20 text-white text-center font-medium bg-white/10"
                 >
                   Admin
-                </Link>
-                <Link
-                  href="/setup"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-xl px-4 py-3 border border-white/20 text-white text-center font-medium bg-white/10"
-                >
-                  Dashboard
                 </Link>
                 <Link
                   href="/signup"
@@ -252,7 +245,7 @@ export default function ShaderShowcase() {
           </motion.h1>
 
           <motion.p
-            className="text-base sm:text-lg md:text-xl font-playfair font-light text-white/75 leading-relaxed max-w-xl mx-auto md:mx-0"
+            className="text-base sm:text-lg md:text-xl font-black font-light text-white/75 leading-relaxed max-w-xl mx-auto md:mx-0"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.8 }}
