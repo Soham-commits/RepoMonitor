@@ -207,10 +207,10 @@ export default function ShaderShowcase() {
 
       {/* Hero Wrapper */}
       <div className="relative z-10 w-full min-h-screen overflow-x-hidden">
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm pointer-events-none" />
+        <div className="absolute inset-0 bg-transparent pointer-events-none" />
         {/* Previous header was here, now replaced by fixed navbar above */}
 
-      <main className="relative z-20 w-full min-h-screen flex items-end justify-start px-4 sm:px-8 lg:px-16 pb-24 md:pb-32 pt-32">
+      <main className="relative z-20 w-full min-h-screen flex items-center md:items-end justify-start px-4 sm:px-8 lg:px-16 pb-10 md:pb-12 pt-24 md:pt-32">
         <div className="w-full max-w-7xl mx-auto flex flex-col items-center md:items-start text-center md:text-left space-y-4 md:space-y-6">
           
           <motion.div
@@ -261,23 +261,23 @@ export default function ShaderShowcase() {
           </motion.p>
 
           <motion.div
-            className="flex flex-col sm:flex-row items-center justify-center md:justify-start gap-3 md:gap-4 pt-4 w-full sm:w-auto"
+            className="flex flex-row items-center justify-center md:justify-start gap-3 sm:gap-4 pt-4 w-full sm:w-auto"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 1.0 }}
           >
-            <Link href="/signup" className="w-full sm:w-auto">
+            <Link href="/signup" className="flex-1 sm:flex-none w-full sm:w-auto">
               <motion.button
-                className="w-full px-10 py-4 rounded-full bg-gradient-to-r from-[#1E2CFF] to-[#6A3DFF] text-white font-semibold text-sm md:text-base transition-all duration-300 ease-in-out hover:scale-105 hover:shadow-[0_0_24px_rgba(30,44,255,0.45)] cursor-pointer uppercase tracking-wider"
+                className="w-full px-4 sm:px-10 py-3.5 sm:py-4 rounded-full bg-gradient-to-r from-[#1E2CFF] to-[#6A3DFF] text-white font-semibold text-xs sm:text-sm md:text-base transition-all duration-300 ease-in-out hover:scale-105 hover:shadow-[0_0_24px_rgba(30,44,255,0.45)] cursor-pointer uppercase tracking-wider whitespace-nowrap"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
                 Start Monitoring
               </motion.button>
             </Link>
-            <Link href="/admin" className="w-full sm:w-auto">
+            <Link href="/admin" className="flex-1 sm:flex-none w-full sm:w-auto">
               <motion.button
-                className="w-full px-10 py-4 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 text-white font-medium text-sm md:text-base transition-all duration-300 ease-in-out hover:scale-105 hover:bg-white/15 cursor-pointer"
+                className="w-full px-4 sm:px-10 py-3.5 sm:py-4 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 text-white font-medium text-xs sm:text-sm md:text-base transition-all duration-300 ease-in-out hover:scale-105 hover:bg-white/15 cursor-pointer whitespace-nowrap"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
