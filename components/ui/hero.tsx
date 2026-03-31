@@ -72,7 +72,7 @@ export default function ShaderShowcase() {
       </svg>
 
       {/* Glass Transparent Pill Navbar */}
-      <header className="fixed top-4 md:top-8 left-1/2 -translate-x-1/2 z-50 w-[92%] md:w-[85%] max-w-5xl">
+      <header className="fixed top-4 md:top-8 left-1/2 -translate-x-1/2 z-[70] w-[92%] md:w-[85%] max-w-5xl">
         <nav className="flex items-center justify-between px-4 md:px-8 py-3 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 shadow-lg transition-all duration-300 ease-in-out">
           {/* Logo */}
           <Link href="/" className="flex items-center group cursor-pointer">
@@ -101,102 +101,90 @@ export default function ShaderShowcase() {
             </a>
           </div>
 
-          {/* Buttons - Right Side */}
+          {/* Buttons - Right Side (Desktop) */}
           <div className="hidden md:flex items-center gap-3">
             <Link href="/admin" className="px-4 py-2 rounded-full bg-transparent border border-white/20 text-white/90 hover:text-white hover:border-white/35 hover:scale-105 text-sm font-medium transition-all duration-300 ease-in-out whitespace-nowrap">
               Admin
             </Link>
-            <Link href="/signup" className="px-4 py-2 rounded-full bg-gradient-to-r from-[#1E2CFF] to-[#6A3DFF] text-white font-semibold text-sm shadow-lg hover:scale-105 transition-all duration-300 ease-in-out whitespace-nowrap">
+            <Link href="/signup" className="px-4 py-2 rounded-full bg-white/5 backdrop-blur-xl border border-white/25 text-white font-semibold text-sm shadow-[0_10px_24px_rgba(8,12,30,0.35)] hover:bg-white/12 hover:border-white/40 hover:scale-105 transition-all duration-300 ease-in-out whitespace-nowrap">
               Start Monitoring
             </Link>
           </div>
 
-          <button
-            type="button"
-            aria-label="Toggle navigation menu"
-            onClick={() => setMobileMenuOpen((prev) => !prev)}
-            className="md:hidden h-10 w-10 rounded-full border border-white/20 bg-white/10 backdrop-blur-xl text-white flex items-center justify-center shadow-lg"
-          >
-            {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-          </button>
+          {/* Mobile Right Side Controls (Menu) */}
+          <div className="flex md:hidden items-center gap-2">
+            <button
+              type="button"
+              aria-label="Toggle navigation menu"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              className="h-8 w-8 rounded-full border border-white/20 bg-white/10 backdrop-blur-xl text-white flex items-center justify-center shadow-lg transition-all"
+            >
+              {mobileMenuOpen ? <X className="h-3.5 w-3.5" /> : <Menu className="h-3.5 w-3.5" />}
+            </button>
+          </div>
         </nav>
       </header>
 
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
-            className="md:hidden fixed inset-0 z-[60]"
-          >
-            <button
-              type="button"
-              aria-label="Close navigation menu"
+      {/* FLOATING NAVIGATION (Mobile - No Box) */}
+      <div
+        className={`md:hidden fixed inset-0 z-[60] flex items-center justify-center transition-all duration-500 ${
+          mobileMenuOpen ? "opacity-100 visible" : "opacity-0 invisible"
+        }`}
+      >
+        {/* BACKGROUND BLUR */}
+        <div
+          onClick={() => setMobileMenuOpen(false)}
+          className={`absolute inset-0 bg-black/40 backdrop-blur-md transition-opacity duration-500 ${
+            mobileMenuOpen ? "opacity-100" : "opacity-0"
+          }`}
+        />
+
+        {/* CONTENT (NO BOX) */}
+        <div
+          className={`relative z-10 w-full max-w-sm px-6 py-10 flex flex-col items-center gap-6 text-center transform transition-all duration-500 ease-out ${
+            mobileMenuOpen ? "scale-100 translate-y-0 opacity-100" : "scale-95 translate-y-4 opacity-0"
+          }`}
+        >
+          {/* LINKS */}
+          <div className="flex flex-col items-center gap-6 w-full text-center mt-4">
+            <a
+              href="#features"
               onClick={() => setMobileMenuOpen(false)}
-              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            />
-
-            <motion.aside
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ duration: 0.3, ease: "easeInOut" }}
-              className="absolute right-3 top-3 w-fit min-w-[240px] max-w-[60%] h-fit rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-lg p-5"
+              className="text-white/70 hover:text-white text-xl transition-colors font-medium"
             >
-              <div className="flex items-center justify-between mb-5">
-                <h2 className="text-base font-bold text-white">Navigation</h2>
-                <button
-                  type="button"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="h-10 w-10 rounded-full border border-white/20 bg-white/10 text-white flex items-center justify-center"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+              Features
+            </a>
+            <a
+              href="#how-it-works"
+              onClick={() => setMobileMenuOpen(false)}
+              className="text-white/70 hover:text-white text-xl transition-colors font-medium"
+            >
+              How It Works
+            </a>
+            <a
+              href="#api"
+              onClick={() => setMobileMenuOpen(false)}
+              className="text-white/70 hover:text-white text-xl transition-colors font-medium"
+            >
+              Event Stats
+            </a>
+          </div>
 
-              <div className="flex flex-col gap-3 text-sm">
-                <a
-                  href="#features"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-xl px-4 py-3 bg-white/10 border border-white/20 text-white/90"
-                >
-                  Features
-                </a>
-                <a
-                  href="#how-it-works"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-xl px-4 py-3 bg-white/10 border border-white/20 text-white/90"
-                >
-                  How It Works
-                </a>
-                <a
-                  href="#api"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-xl px-4 py-3 bg-white/10 border border-white/20 text-white/90"
-                >
-                  Event Stats
-                </a>
-                <Link
-                  href="/admin"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-xl px-4 py-3 border border-white/20 text-white text-center font-medium bg-white/10"
-                >
-                  Admin
-                </Link>
-                <Link
-                  href="/signup"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-xl px-4 py-3 text-white text-center font-semibold bg-gradient-to-r from-[#1E2CFF] to-[#6A3DFF] shadow-lg"
-                >
-                  Start Monitoring
-                </Link>
-              </div>
-            </motion.aside>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          {/* CTA */}
+          <div className="w-full flex flex-col gap-4 mt-6">
+            <Link href="/admin" onClick={() => setMobileMenuOpen(false)} className="w-full">
+              <button className="w-full px-8 py-4 rounded-full border border-white/20 bg-white/5 backdrop-blur-sm text-white font-medium hover:bg-white/10 transition-colors duration-300">
+                Admin
+              </button>
+            </Link>
+            <Link href="/signup" onClick={() => setMobileMenuOpen(false)} className="w-full">
+              <button className="w-full px-8 py-4 rounded-full bg-white/5 backdrop-blur-xl border border-white/25 text-white font-medium hover:scale-105 hover:bg-white/12 hover:border-white/40 transition-all duration-300 shadow-[0_10px_24px_rgba(8,12,30,0.35)]">
+                Start Monitoring
+              </button>
+            </Link>
+          </div>
+        </div>
+      </div>
 
       {/* Hero Wrapper */}
       <div className="relative z-10 w-full min-h-screen overflow-x-hidden">
@@ -235,7 +223,7 @@ export default function ShaderShowcase() {
                 Monitor
               </motion.span>
               <span
-                className="font-extrabold text-white"
+                className="text-white"
                 style={{ fontFamily: "Satoshi, var(--font-geist-sans), sans-serif" }}
               >
                 Teams
@@ -261,7 +249,7 @@ export default function ShaderShowcase() {
           >
             <Link href="/signup" className="flex-1 sm:flex-none w-full sm:w-auto">
               <motion.button
-                className="w-full px-4 sm:px-10 py-3.5 sm:py-4 rounded-full bg-gradient-to-r from-[#1E2CFF] to-[#6A3DFF] text-white font-semibold text-xs sm:text-sm md:text-base transition-all duration-300 ease-in-out hover:scale-105 hover:shadow-[0_0_24px_rgba(30,44,255,0.45)] cursor-pointer uppercase tracking-wider whitespace-nowrap"
+                className="w-full px-4 sm:px-10 py-3.5 sm:py-4 rounded-full bg-white/5 backdrop-blur-xl border border-white/25 text-white font-semibold text-xs sm:text-sm md:text-base transition-all duration-300 ease-in-out hover:scale-105 hover:bg-white/12 hover:border-white/40 hover:shadow-[0_10px_24px_rgba(8,12,30,0.35)] cursor-pointer uppercase tracking-wider whitespace-nowrap"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >

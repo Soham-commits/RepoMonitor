@@ -1,11 +1,22 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
+import { Geist_Mono, Playfair_Display } from "next/font/google";
 import localFont from "next/font/local";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const satoshi = localFont({
+  src: [
+    {
+      path: "../satoshi/Satoshi-Regular.otf",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "../satoshi/Satoshi-Medium.otf",
+      weight: "500",
+      style: "normal",
+    },
+  ],
+  variable: "--font-satoshi",
   display: "swap",
 });
 
@@ -16,7 +27,7 @@ const geistMono = Geist_Mono({
 });
 
 const playfair = Playfair_Display({
-  variable: "--font-playfair",
+  variable: "--font-playfair-display",
   subsets: ["latin"],
   style: ["italic"],
   weight: ["700"],
@@ -25,7 +36,7 @@ const playfair = Playfair_Display({
 
 const instrumentSerif = localFont({
   src: "../InstrumentSerif-Italic.ttf",
-  variable: "--font-instrument",
+  variable: "--font-instrument-serif",
   style: "normal",
   weight: "400",
   display: "swap",
@@ -44,7 +55,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} ${instrumentSerif.variable} h-full antialiased`}
+      className={`${satoshi.variable} ${geistMono.variable} ${playfair.variable} ${instrumentSerif.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
