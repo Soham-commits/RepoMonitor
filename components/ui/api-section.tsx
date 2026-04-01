@@ -33,7 +33,7 @@ export default function APISection() {
             </a>
             <Link href="/signup" className="w-full sm:flex-1">
               <motion.button
-                className="w-full px-10 py-4 rounded-full bg-gradient-to-r from-[#1E2CFF] to-[#6A3DFF] text-white font-semibold text-sm transition-all duration-300 hover:from-[#6A3DFF] hover:to-[#B06CFF] cursor-pointer shadow-lg hover:shadow-xl"
+                className="w-full px-10 py-4 rounded-full bg-white/10 backdrop-blur-xl border border-white/30 text-white font-semibold text-sm transition-all duration-300 cursor-pointer shadow-[0_10px_30px_rgba(20,30,90,0.35)] hover:bg-white/16 hover:border-white/45 hover:shadow-[0_12px_34px_rgba(106,61,255,0.35)]"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
