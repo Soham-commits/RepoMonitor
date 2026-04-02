@@ -103,7 +103,7 @@ export default function ShaderShowcase() {
 
           {/* Buttons - Right Side (Desktop) */}
           <div className="hidden md:flex items-center gap-3">
-            <Link href="/login" className="px-4 py-2 rounded-full bg-transparent border border-white/20 text-white/90 hover:text-white hover:border-white/35 hover:scale-105 text-sm font-medium transition-all duration-300 ease-in-out whitespace-nowrap">
+            <Link href="/admin" className="px-4 py-2 rounded-full bg-transparent border border-white/20 text-white/90 hover:text-white hover:border-white/35 hover:scale-105 text-sm font-medium transition-all duration-300 ease-in-out whitespace-nowrap">
               Admin
             </Link>
             <Link href="/login" className="px-4 py-2 rounded-full bg-white/5 backdrop-blur-xl border border-white/25 text-white font-semibold text-sm shadow-[0_10px_24px_rgba(8,12,30,0.35)] hover:bg-white/12 hover:border-white/40 hover:scale-105 transition-all duration-300 ease-in-out whitespace-nowrap">
@@ -172,7 +172,7 @@ export default function ShaderShowcase() {
 
           {/* CTA */}
           <div className="w-full flex flex-col gap-4 mt-6">
-            <Link href="/login" onClick={() => setMobileMenuOpen(false)} className="w-full">
+            <Link href="/admin" onClick={() => setMobileMenuOpen(false)} className="w-full">
               <button className="w-full px-8 py-4 rounded-full border border-white/20 bg-white/5 backdrop-blur-sm text-white font-medium hover:bg-white/10 transition-colors duration-300">
                 Admin
               </button>
@@ -256,7 +256,7 @@ export default function ShaderShowcase() {
                 Start Monitoring
               </motion.button>
             </Link>
-            <Link href="/login" className="flex-1 sm:flex-none w-full sm:w-auto">
+            <Link href="/admin" className="flex-1 sm:flex-none w-full sm:w-auto">
               <motion.button
                 className="w-full px-4 sm:px-10 py-3.5 sm:py-4 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 text-white font-medium text-xs sm:text-sm md:text-base transition-all duration-300 ease-in-out hover:scale-105 hover:bg-white/15 cursor-pointer whitespace-nowrap"
                 whileHover={{ scale: 1.05 }}

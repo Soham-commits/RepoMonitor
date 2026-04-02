@@ -451,8 +451,8 @@ export default function DashboardPage() {
         </div>
 
         {isUploadScreen && (
-          <div className="min-h-screen w-full max-w-2xl mx-auto p-3 sm:p-4 md:p-6 pt-6">
-            <div className="mb-4">
+          <div className="min-h-screen relative w-full px-3 sm:px-4 md:px-6 py-6">
+            <div className="fixed top-6 left-3 sm:left-4 md:left-6 z-20">
               <button
                 type="button"
                 onClick={handleBackToDashboard}
@@ -462,99 +462,101 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            <div className="mb-4 md:mb-6 rounded-2xl bg-white/10 border border-white/20 backdrop-blur-xl shadow-lg p-4 md:p-5">
-              {shouldShowPatInput ? (
-                <div>
-                  <div className="flex flex-col gap-3">
-                    <div className="max-w-lg">
-                      <p className="text-white font-semibold text-sm">GitHub Personal Access Token</p>
-                      <p className="text-white/50 text-xs mt-1">Saved to MongoDB for your account and reused on next login.</p>
-                    </div>
-
-                    <div className="w-full flex flex-col sm:flex-row gap-2">
-                      <input
-                        type="password"
-                        placeholder="ghp_..."
-                        value={pat}
-                        onChange={(event) => {
-                          setPat(event.target.value);
-                          setPatSaveError("");
-                        }}
-                        className="flex-1 bg-white/8 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-white/30"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void handleSavePat();
-                        }}
-                        disabled={isSavingPat}
-                        className="px-5 py-3 rounded-xl bg-white/12 border border-white/20 text-white text-sm font-medium hover:bg-white/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                        {isSavingPat ? "Saving..." : "Save PAT"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {patSaveError && <p className="mt-2 text-xs text-red-300">{patSaveError}</p>}
-                </div>
-              ) : (
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="w-full max-w-2xl mx-auto pt-16 md:pt-20">
+              <div className="mb-4 md:mb-6 rounded-2xl bg-white/10 border border-white/20 backdrop-blur-xl shadow-lg p-4 md:p-5">
+                {shouldShowPatInput ? (
                   <div>
-                    <p className="text-white/55 text-xs uppercase tracking-wider">Current PAT</p>
-                    <p className="text-white/85 text-sm font-mono mt-1">{maskedPat}</p>
+                    <div className="flex flex-col gap-3">
+                      <div className="max-w-lg">
+                        <p className="text-white font-semibold text-sm">GitHub Personal Access Token</p>
+                        <p className="text-white/50 text-xs mt-1">Saved to MongoDB for your account and reused on next login.</p>
+                      </div>
+
+                      <div className="w-full flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="password"
+                          placeholder="ghp_..."
+                          value={pat}
+                          onChange={(event) => {
+                            setPat(event.target.value);
+                            setPatSaveError("");
+                          }}
+                          className="flex-1 bg-white/8 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-white/30"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleSavePat();
+                          }}
+                          disabled={isSavingPat}
+                          className="px-5 py-3 rounded-xl bg-white/12 border border-white/20 text-white text-sm font-medium hover:bg-white/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {isSavingPat ? "Saving..." : "Save PAT"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {patSaveError && <p className="mt-2 text-xs text-red-300">{patSaveError}</p>}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsPatInputVisible(true);
-                      setPatSaveError("");
+                ) : (
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <p className="text-white/55 text-xs uppercase tracking-wider">Current PAT</p>
+                      <p className="text-white/85 text-sm font-mono mt-1">{maskedPat}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPatInputVisible(true);
+                        setPatSaveError("");
+                      }}
+                      className="self-start sm:self-auto px-4 py-2 rounded-xl bg-white/12 border border-white/20 text-white text-xs font-medium hover:bg-white/20 transition-all"
+                    >
+                      Change PAT
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`relative p-8 md:p-12 rounded-[2.5rem] bg-white/10 backdrop-blur-xl border-2 border-dashed transition-all duration-300 ease-in-out flex flex-col items-center text-center gap-6 group ${
+                  isDragging ? "border-white/30 bg-white/8 scale-[1.02]" : "border-white/15 hover:border-white/30"
+                }`}
+              >
+                <div className="w-20 h-20 rounded-3xl bg-[#1E2CFF]/20 border border-[#1E2CFF]/30 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
+                  <Upload className={`w-10 h-10 text-[#1E2CFF] ${isDragging ? "animate-bounce" : ""}`} />
+                </div>
+
+                <div className="space-y-2">
+                  <h2 className="text-xl md:text-2xl font-bold text-white tracking-tight">Upload Team Data</h2>
+                  <p className="text-white/45 text-sm max-w-sm mx-auto leading-relaxed">
+                    Upload Excel or CSV with Team ID, Team Name, PS ID, GitHub Repo Link
+                  </p>
+                </div>
+
+                <label className="mt-4 relative group cursor-pointer">
+                  <input
+                    type="file"
+                    accept=".xlsx,.csv"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      void handleUpload(file);
+                      event.currentTarget.value = "";
                     }}
-                    className="self-start sm:self-auto px-4 py-2 rounded-xl bg-white/12 border border-white/20 text-white text-xs font-medium hover:bg-white/20 transition-all"
-                  >
-                    Change PAT
-                  </button>
+                  />
+                  <div className="px-10 py-4 rounded-2xl bg-gradient-to-r from-[#1E2CFF] to-[#6A3DFF] text-white font-bold text-sm transition-all duration-300 hover:from-[#6A3DFF] hover:to-[#B06CFF] shadow-lg active:scale-95 uppercase tracking-wider min-h-12">
+                    {isUploadingData ? "Uploading..." : "Select File"}
+                  </div>
+                </label>
+
+                <div className="absolute top-6 right-6 opacity-10">
+                  <FileSpreadsheet className="w-16 h-16 text-white" />
                 </div>
-              )}
-            </div>
-
-            <div
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              className={`relative p-8 md:p-12 rounded-[2.5rem] bg-white/10 backdrop-blur-xl border-2 border-dashed transition-all duration-300 ease-in-out flex flex-col items-center text-center gap-6 group ${
-                isDragging ? "border-white/30 bg-white/8 scale-[1.02]" : "border-white/15 hover:border-white/30"
-              }`}
-            >
-              <div className="w-20 h-20 rounded-3xl bg-[#1E2CFF]/20 border border-[#1E2CFF]/30 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
-                <Upload className={`w-10 h-10 text-[#1E2CFF] ${isDragging ? "animate-bounce" : ""}`} />
-              </div>
-
-              <div className="space-y-2">
-                <h2 className="text-xl md:text-2xl font-bold text-white tracking-tight">Upload Team Data</h2>
-                <p className="text-white/45 text-sm max-w-sm mx-auto leading-relaxed">
-                  Upload Excel or CSV with Team ID, Team Name, PS ID, GitHub Repo Link
-                </p>
-              </div>
-
-              <label className="mt-4 relative group cursor-pointer">
-                <input
-                  type="file"
-                  accept=".xlsx,.csv"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (!file) return;
-                    void handleUpload(file);
-                    event.currentTarget.value = "";
-                  }}
-                />
-                <div className="px-10 py-4 rounded-2xl bg-gradient-to-r from-[#1E2CFF] to-[#6A3DFF] text-white font-bold text-sm transition-all duration-300 hover:from-[#6A3DFF] hover:to-[#B06CFF] shadow-lg active:scale-95 uppercase tracking-wider min-h-12">
-                  {isUploadingData ? "Uploading..." : "Select File"}
-                </div>
-              </label>
-
-              <div className="absolute top-6 right-6 opacity-10">
-                <FileSpreadsheet className="w-16 h-16 text-white" />
               </div>
             </div>
 

@@ -49,13 +49,14 @@ export default function LoginPage() {
       console.log("Login response:", data);
 
       if (response.ok && data.success) {
-        if (data.role === "admin" || data.role === "both") {
-          router.push("/admin/dashboard");
+        if (data.role === "tech" || data.role === "both") {
+          router.push("/dashboard");
           return;
         }
 
-        if (data.role === "tech") {
-          router.push("/dashboard");
+        if (data.role === "admin") {
+          await fetch("/api/auth/logout", { method: "POST" });
+          setError("Invalid credentials");
           return;
         }
       }
@@ -112,7 +113,7 @@ export default function LoginPage() {
               <input
                 type="text"
                 required
-                placeholder="ignisia-admin"
+                placeholder="ignisia-tech"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full bg-white/8 border border-white/15 focus:border-white/30 rounded-2xl pl-12 pr-5 py-4 text-white placeholder:text-white/40 focus:outline-none focus:ring-0 transition-all text-sm shadow-inner"
