@@ -5,16 +5,18 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, User, Lock, Eye, EyeOff } from "lucide-react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { auth } from "@/src/utils/auth";
 import { VideoBackground } from "@/components/ui/video-background";
 
-const LAST_LOGIN_KEY = "repomonitor_last_login";
+type LoginRole = "admin" | "tech" | "both";
+
+interface LoginResponse {
+  success?: boolean;
+  role?: LoginRole;
+  error?: string;
+}
 
 export default function LoginPage() {
-  const [email, setEmail] = useState(() => {
-    if (typeof window === "undefined") return "";
-    return localStorage.getItem(LAST_LOGIN_KEY) || "";
-  });
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -27,11 +29,40 @@ export default function LoginPage() {
     setError("");
 
     try {
-      auth.login(email, password);
-      localStorage.setItem(LAST_LOGIN_KEY, email);
-      router.push("/setup");
-    } catch (err: any) {
-      setError(err.message || "Invalid username or password");
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      let data: LoginResponse = {};
+
+      try {
+        data = (await response.json()) as LoginResponse;
+      } catch {
+        data = {};
+      }
+
+      console.log("Login response:", data);
+
+      if (response.ok && data.success) {
+        if (data.role === "admin" || data.role === "both") {
+          router.push("/admin/dashboard");
+          return;
+        }
+
+        if (data.role === "tech") {
+          router.push("/dashboard");
+          return;
+        }
+      }
+
+      setError(data.error || "Invalid credentials");
+    } catch {
+      setError("Invalid credentials");
     } finally {
       setIsLoading(false);
     }
@@ -74,16 +105,16 @@ export default function LoginPage() {
 
           <div>
             <label className="block text-sm font-medium text-white/80 mb-2 ml-1">
-              Email Address
+              Username
             </label>
             <div className="relative">
               <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
               <input
-                type="email"
+                type="text"
                 required
-                placeholder="name@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                placeholder="ignisia-admin"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 className="w-full bg-white/8 border border-white/15 focus:border-white/30 rounded-2xl pl-12 pr-5 py-4 text-white placeholder:text-white/40 focus:outline-none focus:ring-0 transition-all text-sm shadow-inner"
               />
             </div>
@@ -127,12 +158,7 @@ export default function LoginPage() {
         </form>
 
         <div className="mt-8 pt-8 border-t border-white/15 text-center">
-          <p className="text-white/45 text-xs">
-            Don't have an account?{" "}
-            <Link href="/signup" className="text-[#1E2CFF] hover:text-[#B06CFF] transition-colors font-medium">
-              Create one now
-            </Link>
-          </p>
+          <p className="text-white/45 text-xs">Use your assigned credentials to access the dashboard.</p>
         </div>
       </motion.div>
       </div>

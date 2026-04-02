@@ -168,12 +168,32 @@ export default function AdminDashboardPage() {
   }
 
   useEffect(() => {
-    const auth = localStorage.getItem("admin-auth")
-    if (auth !== "true") {
-      router.push("/admin")
-    } else {
-      setIsAuthenticated(true)
+    const verifySession = async () => {
+      try {
+        const response = await fetch("/api/auth/me", { cache: "no-store" })
+
+        if (!response.ok) {
+          router.replace("/login")
+          return
+        }
+
+        const payload = (await response.json()) as {
+          username: string
+          role: "admin" | "tech" | "both"
+        }
+
+        if (payload.role === "tech") {
+          router.replace("/dashboard")
+          return
+        }
+
+        setIsAuthenticated(true)
+      } catch {
+        router.replace("/login")
+      }
     }
+
+    void verifySession()
   }, [router])
 
   useEffect(() => {
@@ -217,9 +237,12 @@ export default function AdminDashboardPage() {
     return () => document.body.classList.remove("menu-open")
   }, [mobileNavOpen])
 
-  const handleLogout = () => {
-    localStorage.removeItem("admin-auth")
-    router.push("/admin")
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" })
+    } finally {
+      router.push("/login")
+    }
   }
 
   const handleDragOver = (e: React.DragEvent) => {

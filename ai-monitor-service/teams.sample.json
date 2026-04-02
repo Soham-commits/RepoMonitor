@@ -1,0 +1,14 @@
+[
+  {
+    "teamId": "team-alpha",
+    "teamName": "Team Alpha",
+    "owner": "octocat",
+    "repo": "Hello-World"
+  },
+  {
+    "teamId": "team-beta",
+    "teamName": "Team Beta",
+    "owner": "octokit",
+    "repo": "rest.js"
+  }
+]

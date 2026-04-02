@@ -1,0 +1,25 @@
+{
+  "name": "ai-monitor-service",
+  "version": "1.0.0",
+  "description": "Standalone AI surveillance microservice for hackathon repository monitoring",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "check": "node --check src/server.js && node --check src/config.js && node --check src/routes/monitorRoutes.js && node --check src/services/githubSnapshotService.js && node --check src/services/geminiAnalysisService.js && node --check src/services/monitorOrchestrator.js && node --check src/services/whatsappAlertService.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@octokit/rest": "^22.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "node-cron": "^3.0.3",
+    "papaparse": "^5.5.3",
+    "twilio": "^5.4.2",
+    "xlsx": "^0.18.5"
+  }
+}

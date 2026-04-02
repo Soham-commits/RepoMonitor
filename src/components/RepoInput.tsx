@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
-import { TeamProfile } from "../utils/auth";
+import type { TeamProfile } from "../utils/auth";
 
 export interface RepoInputProps {
   onStart: (repos: string[], pat: string, teams?: TeamProfile[]) => void;
