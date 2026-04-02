@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useRef } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { fetchRepoInfo } from "../utils/github";
 import { StarButton } from "./StarButton";
 import { CheckCircle2, XCircle, AlertCircle, Loader2, ArrowLeft } from "lucide-react";
@@ -12,6 +12,7 @@ import type { TeamProfile } from "../utils/auth";
 
 export interface RepoInputProps {
   onStart: (repos: string[], pat: string, teams?: TeamProfile[]) => void;
+  initialPat?: string;
 }
 
 type ValidationStatus = "idle" | "validating" | "done";
@@ -134,8 +135,8 @@ const parseTeamsFromRows = (rows: Record<string, unknown>[]): ParsedTeamResult =
   return { teams, hasRequiredColumns: true };
 };
 
-export function RepoInput({ onStart }: RepoInputProps) {
-  const [pat, setPat] = useState("");
+export function RepoInput({ onStart, initialPat = "" }: RepoInputProps) {
+  const [pat, setPat] = useState(initialPat);
   const [repoText, setRepoText] = useState("");
   const [importMessage, setImportMessage] = useState("");
   const [importError, setImportError] = useState("");
@@ -146,6 +147,10 @@ export function RepoInput({ onStart }: RepoInputProps) {
   const [status, setStatus] = useState<ValidationStatus>("idle");
   const [results, setResults] = useState<ValidationResult[]>([]);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
+
+  useEffect(() => {
+    setPat(initialPat);
+  }, [initialPat]);
 
   const rawLines = useMemo(() => {
     return repoText

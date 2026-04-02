@@ -45,8 +45,6 @@ type AdminCombinedFilter = "All" | "Has Commits" | "No Commits" | `PS:${string}`
 const REQUIRED_COLUMN_ERROR = "Could not detect required columns. Check your file format"
 const COMMIT_SINCE = "2026-04-02T08:30:00Z"
 const COMMIT_UNTIL = "2026-04-04T18:29:00Z"
-const ADMIN_TEAMS_STORAGE_KEY = "admin-teams"
-const ADMIN_PAT_KEY = "admin-pat"
 
 const formatCommitTime = (iso: string) => {
   return new Intl.DateTimeFormat("en-US", {
@@ -132,6 +130,35 @@ const parseTeamsFromRows = (rows: Record<string, unknown>[]): ParsedTeamResult =
   return { teams, hasRequiredColumns: true }
 }
 
+const sanitizeTeamsPayload = (value: unknown): Team[] => {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null
+
+      const team = item as Partial<Team>
+      const teamId = typeof team.teamId === "string" ? team.teamId.trim() : ""
+      const teamName = typeof team.teamName === "string" ? team.teamName.trim() : ""
+      const psId = typeof team.psId === "string" ? team.psId.trim() : ""
+      const repoLink = typeof team.repoLink === "string" ? team.repoLink.trim() : ""
+
+      if (!teamId || !teamName || !psId || !repoLink) {
+        return null
+      }
+
+      return {
+        teamId,
+        teamName,
+        psId,
+        repoLink,
+      }
+    })
+    .filter((team): team is Team => Boolean(team))
+}
+
 export default function AdminDashboardPage() {
   const router = useRouter()
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
@@ -148,10 +175,14 @@ export default function AdminDashboardPage() {
   const [mobileControlsOpen, setMobileControlsOpen] = useState(false)
   const [teams, setTeams] = useState<Team[]>([])
   const [pat, setPat] = useState("")
+  const [isSavingPat, setIsSavingPat] = useState(false)
+  const [patSaveError, setPatSaveError] = useState("")
+  const [patSaveMessage, setPatSaveMessage] = useState("")
   const [rateLimit, setRateLimit] = useState<{ remaining: string; limit: string }>({ remaining: "--", limit: "--" })
   const [teamCommits, setTeamCommits] = useState<Record<string, TeamCommitState>>({})
   const fetchCycleRef = useRef(0)
   const importToastTimeoutRef = useRef<number | null>(null)
+  const patSaveTimeoutRef = useRef<number | null>(null)
 
   const showImportSuccessToast = (message: string) => {
     if (importToastTimeoutRef.current) {
@@ -187,6 +218,33 @@ export default function AdminDashboardPage() {
           return
         }
 
+        const [patResponse, teamsResponse] = await Promise.all([
+          fetch("/api/pat", { cache: "no-store" }),
+          fetch("/api/teams", { cache: "no-store" }),
+        ])
+
+        if (patResponse.status === 401 || teamsResponse.status === 401) {
+          router.replace("/login")
+          return
+        }
+
+        const patPayload = patResponse.ok
+          ? ((await patResponse.json()) as { pat?: string | null })
+          : { pat: null }
+
+        const teamsPayload = teamsResponse.ok
+          ? ((await teamsResponse.json()) as { teams?: unknown })
+          : { teams: [] }
+
+        setPat(typeof patPayload.pat === "string" ? patPayload.pat : "")
+
+        const persistedTeams = sanitizeTeamsPayload(teamsPayload.teams)
+        setTeams(persistedTeams)
+
+        if (persistedTeams.length > 0) {
+          setImportError("")
+        }
+
         setIsAuthenticated(true)
       } catch {
         router.replace("/login")
@@ -197,40 +255,16 @@ export default function AdminDashboardPage() {
   }, [router])
 
   useEffect(() => {
-    if (!isAuthenticated) return
-
-    const savedTeamsRaw = localStorage.getItem(ADMIN_TEAMS_STORAGE_KEY)
-    if (!savedTeamsRaw) return
-
-    try {
-      const savedTeams = JSON.parse(savedTeamsRaw) as Team[]
-      if (!Array.isArray(savedTeams) || savedTeams.length === 0) return
-
-      const sanitizedTeams = savedTeams.filter(
-        (team) => team?.teamId && team?.teamName && team?.psId && team?.repoLink
-      )
-      if (!sanitizedTeams.length) return
-
-      setTeams(sanitizedTeams)
-      setImportError("")
-    } catch {
-      localStorage.removeItem(ADMIN_TEAMS_STORAGE_KEY)
-    }
-  }, [isAuthenticated])
-
-  useEffect(() => {
     return () => {
       if (importToastTimeoutRef.current) {
         window.clearTimeout(importToastTimeoutRef.current)
       }
+
+      if (patSaveTimeoutRef.current) {
+        window.clearTimeout(patSaveTimeoutRef.current)
+      }
     }
   }, [])
-
-  useEffect(() => {
-    if (!isAuthenticated) return
-    const savedPat = localStorage.getItem(ADMIN_PAT_KEY)?.trim() || ""
-    setPat(savedPat)
-  }, [isAuthenticated])
 
   useEffect(() => {
     document.body.classList.toggle("menu-open", mobileNavOpen)
@@ -242,6 +276,47 @@ export default function AdminDashboardPage() {
       await fetch("/api/auth/logout", { method: "POST" })
     } finally {
       router.push("/login")
+    }
+  }
+
+  const handleSavePat = async () => {
+    setPatSaveError("")
+    setPatSaveMessage("")
+    setIsSavingPat(true)
+
+    try {
+      const trimmedPat = pat.trim()
+      const response = await fetch("/api/pat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ pat: trimmedPat }),
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          router.replace("/login")
+          return
+        }
+        throw new Error("Failed to save PAT")
+      }
+
+      setPat(trimmedPat)
+      setPatSaveMessage("PAT saved")
+
+      if (patSaveTimeoutRef.current) {
+        window.clearTimeout(patSaveTimeoutRef.current)
+      }
+
+      patSaveTimeoutRef.current = window.setTimeout(() => {
+        setPatSaveMessage("")
+        patSaveTimeoutRef.current = null
+      }, 3000)
+    } catch {
+      setPatSaveError("Unable to save PAT. Please try again.")
+    } finally {
+      setIsSavingPat(false)
     }
   }
 
@@ -502,14 +577,33 @@ export default function AdminDashboardPage() {
         return
       }
 
+      const saveResponse = await fetch("/api/teams", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ teams: parsed.teams }),
+      })
+
+      if (!saveResponse.ok) {
+        if (saveResponse.status === 401) {
+          router.replace("/login")
+          return
+        }
+        throw new Error("SAVE_TEAMS_FAILED")
+      }
+
       setTeams(parsed.teams)
-      localStorage.setItem(ADMIN_TEAMS_STORAGE_KEY, JSON.stringify(parsed.teams))
       const psCount = new Set(parsed.teams.map((team) => team.psId)).size
       showImportSuccessToast(`${parsed.teams.length} teams imported across ${psCount} problem statements`)
-    } catch {
+    } catch (error) {
       setTeams([])
       setTeamCommits({})
-      setImportError(REQUIRED_COLUMN_ERROR)
+      if (error instanceof Error && error.message === "SAVE_TEAMS_FAILED") {
+        setImportError("Could not save team data. Please try again")
+      } else {
+        setImportError(REQUIRED_COLUMN_ERROR)
+      }
     } finally {
       setIsImporting(false)
       setIsDragging(false)
@@ -522,11 +616,8 @@ export default function AdminDashboardPage() {
       setIsFetchingCommitData(false)
       return
     }
-    const token = (pat || localStorage.getItem(ADMIN_PAT_KEY)?.trim() || "")
+    const token = pat.trim()
     if (!token) return
-    if (token !== pat) {
-      setPat(token)
-    }
     void fetchAllCommitData(teams, token)
   }, [teams, pat, isAuthenticated])
 
@@ -610,7 +701,6 @@ export default function AdminDashboardPage() {
   }, [groupedTeams])
 
   const handleLoadNewData = () => {
-    localStorage.removeItem(ADMIN_TEAMS_STORAGE_KEY)
     setTeams([])
     setTeamCommits({})
     setImportError("")
@@ -743,6 +833,42 @@ export default function AdminDashboardPage() {
 
       {/* Main Content */}
       <main className="z-10 flex-1 w-full max-w-7xl mx-auto p-3 sm:p-4 md:p-6 pt-4 md:pt-6">
+        <div className="mb-4 md:mb-6 rounded-2xl bg-white/10 border border-white/20 backdrop-blur-xl shadow-lg p-4 md:p-5">
+          <div className="flex flex-col lg:flex-row lg:items-end gap-3">
+            <div className="lg:flex-1">
+              <p className="text-white font-semibold text-sm">GitHub Personal Access Token</p>
+              <p className="text-white/50 text-xs mt-1">Saved to MongoDB for your account and reused on next login.</p>
+            </div>
+
+            <div className="w-full lg:max-w-2xl flex flex-col sm:flex-row gap-2">
+              <input
+                type="password"
+                placeholder="ghp_..."
+                value={pat}
+                onChange={(e) => {
+                  setPat(e.target.value)
+                  setPatSaveError("")
+                  setPatSaveMessage("")
+                }}
+                className="flex-1 bg-white/8 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-white/30"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  void handleSavePat()
+                }}
+                disabled={isSavingPat}
+                className="px-5 py-3 rounded-xl bg-white/12 border border-white/20 text-white text-sm font-medium hover:bg-white/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isSavingPat ? "Saving..." : "Save PAT"}
+              </button>
+            </div>
+          </div>
+
+          {patSaveError && <p className="mt-2 text-xs text-red-300">{patSaveError}</p>}
+          {patSaveMessage && <p className="mt-2 text-xs text-emerald-300">{patSaveMessage}</p>}
+        </div>
+
         {teams.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
