@@ -174,15 +174,15 @@ export default function AdminDashboardPage() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [mobileControlsOpen, setMobileControlsOpen] = useState(false)
   const [teams, setTeams] = useState<Team[]>([])
+  const [isImportScreen, setIsImportScreen] = useState(true)
   const [pat, setPat] = useState("")
+  const [isPatInputVisible, setIsPatInputVisible] = useState(false)
   const [isSavingPat, setIsSavingPat] = useState(false)
   const [patSaveError, setPatSaveError] = useState("")
-  const [patSaveMessage, setPatSaveMessage] = useState("")
   const [rateLimit, setRateLimit] = useState<{ remaining: string; limit: string }>({ remaining: "--", limit: "--" })
   const [teamCommits, setTeamCommits] = useState<Record<string, TeamCommitState>>({})
   const fetchCycleRef = useRef(0)
   const importToastTimeoutRef = useRef<number | null>(null)
-  const patSaveTimeoutRef = useRef<number | null>(null)
 
   const showImportSuccessToast = (message: string) => {
     if (importToastTimeoutRef.current) {
@@ -236,10 +236,13 @@ export default function AdminDashboardPage() {
           ? ((await teamsResponse.json()) as { teams?: unknown })
           : { teams: [] }
 
-        setPat(typeof patPayload.pat === "string" ? patPayload.pat : "")
+        const persistedPat = typeof patPayload.pat === "string" ? patPayload.pat.trim() : ""
+        setPat(persistedPat)
+        setIsPatInputVisible(!persistedPat)
 
         const persistedTeams = sanitizeTeamsPayload(teamsPayload.teams)
         setTeams(persistedTeams)
+        setIsImportScreen(persistedTeams.length === 0)
 
         if (persistedTeams.length > 0) {
           setImportError("")
@@ -259,10 +262,6 @@ export default function AdminDashboardPage() {
       if (importToastTimeoutRef.current) {
         window.clearTimeout(importToastTimeoutRef.current)
       }
-
-      if (patSaveTimeoutRef.current) {
-        window.clearTimeout(patSaveTimeoutRef.current)
-      }
     }
   }, [])
 
@@ -281,7 +280,6 @@ export default function AdminDashboardPage() {
 
   const handleSavePat = async () => {
     setPatSaveError("")
-    setPatSaveMessage("")
     setIsSavingPat(true)
 
     try {
@@ -303,16 +301,7 @@ export default function AdminDashboardPage() {
       }
 
       setPat(trimmedPat)
-      setPatSaveMessage("PAT saved")
-
-      if (patSaveTimeoutRef.current) {
-        window.clearTimeout(patSaveTimeoutRef.current)
-      }
-
-      patSaveTimeoutRef.current = window.setTimeout(() => {
-        setPatSaveMessage("")
-        patSaveTimeoutRef.current = null
-      }, 3000)
+      setIsPatInputVisible(trimmedPat.length === 0)
     } catch {
       setPatSaveError("Unable to save PAT. Please try again.")
     } finally {
@@ -572,7 +561,6 @@ export default function AdminDashboardPage() {
       const parsed = parseTeamsFromRows(rows)
 
       if (!parsed.hasRequiredColumns) {
-        setTeams([])
         setImportError(REQUIRED_COLUMN_ERROR)
         return
       }
@@ -593,12 +581,15 @@ export default function AdminDashboardPage() {
         throw new Error("SAVE_TEAMS_FAILED")
       }
 
+      setIsImportScreen(false)
+      if (pat.trim()) {
+        setIsPatInputVisible(false)
+      }
+      setImportError("")
       setTeams(parsed.teams)
       const psCount = new Set(parsed.teams.map((team) => team.psId)).size
       showImportSuccessToast(`${parsed.teams.length} teams imported across ${psCount} problem statements`)
     } catch (error) {
-      setTeams([])
-      setTeamCommits({})
       if (error instanceof Error && error.message === "SAVE_TEAMS_FAILED") {
         setImportError("Could not save team data. Please try again")
       } else {
@@ -700,14 +691,25 @@ export default function AdminDashboardPage() {
     return Object.keys(groupedTeams).sort((a, b) => a.localeCompare(b))
   }, [groupedTeams])
 
+  const hasSavedPat = pat.trim().length > 0
+  const shouldShowPatInput = isPatInputVisible || !hasSavedPat
+  const maskedPat = hasSavedPat ? `${pat.trim().slice(0, 4)}${"•".repeat(10)}` : ""
+
   const handleLoadNewData = () => {
-    setTeams([])
-    setTeamCommits({})
+    setIsImportScreen(true)
+    setIsPatInputVisible(false)
+    setPatSaveError("")
     setImportError("")
-    setIsFetchingCommitData(false)
-    setSearch("")
-    setCombinedFilter("All")
-    setSortKey("Team Name")
+    setIsDragging(false)
+  }
+
+  const handleBackToDashboard = () => {
+    if (teams.length === 0) return
+    setIsImportScreen(false)
+    setIsPatInputVisible(false)
+    setPatSaveError("")
+    setImportError("")
+    setIsDragging(false)
   }
 
   if (isAuthenticated === null) {
@@ -833,48 +835,81 @@ export default function AdminDashboardPage() {
 
       {/* Main Content */}
       <main className="z-10 flex-1 w-full max-w-7xl mx-auto p-3 sm:p-4 md:p-6 pt-4 md:pt-6">
-        <div className="mb-4 md:mb-6 rounded-2xl bg-white/10 border border-white/20 backdrop-blur-xl shadow-lg p-4 md:p-5">
-          <div className="flex flex-col lg:flex-row lg:items-end gap-3">
-            <div className="lg:flex-1">
-              <p className="text-white font-semibold text-sm">GitHub Personal Access Token</p>
-              <p className="text-white/50 text-xs mt-1">Saved to MongoDB for your account and reused on next login.</p>
-            </div>
-
-            <div className="w-full lg:max-w-2xl flex flex-col sm:flex-row gap-2">
-              <input
-                type="password"
-                placeholder="ghp_..."
-                value={pat}
-                onChange={(e) => {
-                  setPat(e.target.value)
-                  setPatSaveError("")
-                  setPatSaveMessage("")
-                }}
-                className="flex-1 bg-white/8 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-white/30"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  void handleSavePat()
-                }}
-                disabled={isSavingPat}
-                className="px-5 py-3 rounded-xl bg-white/12 border border-white/20 text-white text-sm font-medium hover:bg-white/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isSavingPat ? "Saving..." : "Save PAT"}
-              </button>
-            </div>
-          </div>
-
-          {patSaveError && <p className="mt-2 text-xs text-red-300">{patSaveError}</p>}
-          {patSaveMessage && <p className="mt-2 text-xs text-emerald-300">{patSaveMessage}</p>}
-        </div>
-
-        {teams.length === 0 ? (
+        {isImportScreen ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="w-full max-w-2xl mx-auto"
+            className="w-full max-w-2xl mx-auto space-y-4"
           >
+            <div className="flex items-center">
+              <button
+                type="button"
+                onClick={handleBackToDashboard}
+                className={`text-xs md:text-sm px-4 py-2 rounded-xl border border-white/20 transition-all ${
+                  teams.length > 0
+                    ? "text-white/80 bg-white/10 hover:bg-white/15"
+                    : "text-white/40 bg-white/5 cursor-not-allowed"
+                }`}
+              >
+                ← Back to Dashboard
+              </button>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 border border-white/20 backdrop-blur-xl shadow-lg p-4 md:p-5">
+              {shouldShowPatInput ? (
+                <div>
+                  <div className="flex flex-col gap-3">
+                    <div className="max-w-lg">
+                      <p className="text-white font-semibold text-sm">GitHub Personal Access Token</p>
+                      <p className="text-white/50 text-xs mt-1">Saved to MongoDB for your account and reused on next login.</p>
+                    </div>
+
+                    <div className="w-full flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="password"
+                        placeholder="ghp_..."
+                        value={pat}
+                        onChange={(e) => {
+                          setPat(e.target.value)
+                          setPatSaveError("")
+                        }}
+                        className="flex-1 bg-white/8 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-white/30"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleSavePat()
+                        }}
+                        disabled={isSavingPat}
+                        className="px-5 py-3 rounded-xl bg-white/12 border border-white/20 text-white text-sm font-medium hover:bg-white/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {isSavingPat ? "Saving..." : "Save PAT"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {patSaveError && <p className="mt-2 text-xs text-red-300">{patSaveError}</p>}
+                </div>
+              ) : (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <p className="text-white/55 text-xs uppercase tracking-wider">Current PAT</p>
+                    <p className="text-white/85 text-sm font-mono mt-1">{maskedPat}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsPatInputVisible(true)
+                      setPatSaveError("")
+                    }}
+                    className="self-start sm:self-auto px-4 py-2 rounded-xl bg-white/12 border border-white/20 text-white text-xs font-medium hover:bg-white/20 transition-all"
+                  >
+                    Change PAT
+                  </button>
+                </div>
+              )}
+            </div>
+
             <div
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}

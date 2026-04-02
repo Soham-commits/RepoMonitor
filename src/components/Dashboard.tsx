@@ -12,6 +12,7 @@ export interface DashboardProps {
   repos: string[];
   pat: string;
   teams?: TeamProfile[];
+  onUploadNewData?: () => void;
 }
 
 type SortKey = "Name" | "Hackathon Commits" | "Last Push" | "Contributors";
@@ -148,7 +149,7 @@ function parseRepoKey(repoLink: string): string | null {
   return parsePath(trimmed);
 }
 
-export function Dashboard({ repos, pat, teams }: DashboardProps) {
+export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps) {
   const {
     repoStates,
     pollStatus,
@@ -566,6 +567,18 @@ export function Dashboard({ repos, pat, teams }: DashboardProps) {
                   <Download className="w-4 h-4" />
                   Export CSV
                 </button>
+                {onUploadNewData && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onUploadNewData();
+                      setMobileMenuOpen(false);
+                    }}
+                    className="w-full px-4 py-3 rounded-2xl bg-white/10 text-white border border-white/20 flex items-center justify-center gap-2 text-sm"
+                  >
+                    Upload New Data
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -586,10 +599,21 @@ export function Dashboard({ repos, pat, teams }: DashboardProps) {
         <div className="sticky top-3 z-40 rounded-3xl bg-white/10 border border-white/20 backdrop-blur-xl shadow-lg px-4 md:px-6 py-4">
           <div className="flex items-center gap-3">
             <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tighter uppercase">Monitor Dashboard</h1>
-            <div className="ml-auto hidden md:block text-sm text-white/45 space-y-1">
-              <p className="text-right font-mono uppercase tracking-widest text-[10px]">
-                API STATUS: <span className="text-cyan-400">{apiRemainingDisplay}</span> / {rateLimitState.limit}
-              </p>
+            <div className="ml-auto hidden md:flex items-center gap-3">
+              {onUploadNewData && (
+                <button
+                  type="button"
+                  onClick={onUploadNewData}
+                  className="px-5 py-2 rounded-full bg-transparent text-white/70 text-xs font-medium hover:bg-white/15 hover:text-white transition-all duration-300 ease-in-out whitespace-nowrap"
+                >
+                  Upload New Data
+                </button>
+              )}
+              <div className="text-sm text-white/45 space-y-1">
+                <p className="text-right font-mono uppercase tracking-widest text-[10px]">
+                  API STATUS: <span className="text-cyan-400">{apiRemainingDisplay}</span> / {rateLimitState.limit}
+                </p>
+              </div>
             </div>
             <div className="ml-auto md:hidden flex items-center gap-2">
               <div className="text-[10px] font-mono uppercase tracking-wider text-white/60">
