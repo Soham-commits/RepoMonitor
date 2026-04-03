@@ -81,6 +81,19 @@ function formatRelativeTime(isoString: string | null): { text: string; colorClas
   return { text, colorClass };
 }
 
+function normalizeRepoKey(repoKey: string): string {
+  const trimmed = repoKey.trim().replace(/\/+$/, "");
+  const parts = trimmed.split("/").filter(Boolean);
+  if (parts.length < 2) return trimmed;
+
+  const owner = parts[0];
+  const cleanRepo = parts[1].replace(/\.git$/, "");
+  const repo = cleanRepo.replace(/\.git$/i, "");
+  if (!owner || !repo) return trimmed;
+
+  return `${owner}/${repo}`;
+}
+
 function RepoRowComponent({ index, repoKey, teamName, data, isRefreshing = false }: RepoRowProps) {
   const [, forceUpdate] = useState(0);
 
@@ -121,7 +134,8 @@ function RepoRowComponent({ index, repoKey, teamName, data, isRefreshing = false
 
   const isPrivateRow = isPrivateFlag;
   const statusText = isPrivateRow ? "PRIVATE" : status === "Timeout" ? "TIMEOUT" : status;
-  const [ownerName, repoName] = repoKey.split("/");
+  const normalizedRepoKey = normalizeRepoKey(repoKey);
+  const [ownerName, repoName] = normalizedRepoKey.split("/");
 
   const relativePush = formatRelativeTime(lastPushIso);
 
@@ -141,15 +155,15 @@ function RepoRowComponent({ index, repoKey, teamName, data, isRefreshing = false
       <td className="py-6 px-4 align-middle">
         <div className="space-y-1">
           <a
-            href={`https://github.com/${repoKey}`}
+            href={`https://github.com/${normalizedRepoKey}`}
             target="_blank"
             rel="noopener noreferrer"
-            title={repoKey}
+            title={normalizedRepoKey}
             className="text-white font-bold hover:text-[#1E2CFF] transition-all inline-flex items-center gap-1.5 text-sm tracking-tight"
           >
             <span className="leading-tight">
               <span className="block text-white/85">{ownerName}/</span>
-              <span className="block text-white">{repoName || repoKey}</span>
+              <span className="block text-white">{repoName || normalizedRepoKey}</span>
             </span>
             <ExternalLink className="w-3 h-3 text-[#1E2CFF]" />
           </a>

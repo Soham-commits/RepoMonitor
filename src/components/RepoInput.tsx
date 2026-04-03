@@ -51,10 +51,15 @@ const findHeaderKey = (headers: string[], aliases: string[]) => {
   return headers.find((header) => aliasSet.has(normalizeHeader(header)));
 };
 
+const normalizeRepoName = (repoName: string) => {
+  const cleanRepo = repoName.replace(/\.git$/, "");
+  return cleanRepo.replace(/\.git$/i, "");
+};
+
 function parseRepoUrl(input: string): ParsedUrl {
   let url = input.trim();
   // Strip trailing slashes and .git
-  url = url.replace(/\/+$/, "").replace(/\.git$/, "");
+  url = url.replace(/\/+$/, "").replace(/\.git$/i, "");
   
   const parsed = {
     original: input,
@@ -69,22 +74,28 @@ function parseRepoUrl(input: string): ParsedUrl {
       if (target.hostname !== "github.com") return parsed;
       const parts = target.pathname.split("/").filter(Boolean);
       if (parts.length >= 2) {
+        const repo = normalizeRepoName(parts[1]);
+        if (!repo) return parsed;
         parsed.owner = parts[0];
-        parsed.repo = parts[1];
+        parsed.repo = repo;
         parsed.isValidFormat = true;
       }
     } else if (url.startsWith("github.com/")) {
       const parts = url.substring("github.com/".length).split("/").filter(Boolean);
       if (parts.length >= 2) {
+        const repo = normalizeRepoName(parts[1]);
+        if (!repo) return parsed;
         parsed.owner = parts[0];
-        parsed.repo = parts[1];
+        parsed.repo = repo;
         parsed.isValidFormat = true;
       }
     } else {
       const parts = url.split("/").filter(Boolean);
       if (parts.length === 2) {
+        const repo = normalizeRepoName(parts[1]);
+        if (!repo) return parsed;
         parsed.owner = parts[0];
-        parsed.repo = parts[1];
+        parsed.repo = repo;
         parsed.isValidFormat = true;
       }
     }
@@ -116,6 +127,7 @@ const parseTeamsFromRows = (rows: Record<string, unknown>[]): ParsedTeamResult =
       const teamName = String(row[teamNameKey] ?? "").trim();
       const psId = String(row[psIdKey] ?? "").trim();
       const repoLink = String(row[repoLinkKey] ?? "").trim();
+      const normalizedRepoLink = repoLink.replace(/\/+$/, "").replace(/\.git$/i, "");
       const parsedRepo = parseRepoUrl(repoLink);
 
       if (!teamId || !teamName || !psId || !repoLink || !parsedRepo.isValidFormat) {
@@ -126,7 +138,7 @@ const parseTeamsFromRows = (rows: Record<string, unknown>[]): ParsedTeamResult =
         teamId,
         teamName,
         psId,
-        repoLink,
+        repoLink: normalizedRepoLink,
         repoKey: `${parsedRepo.owner}/${parsedRepo.repo}`,
       };
     })
@@ -179,7 +191,9 @@ export function RepoInput({ onStart, initialPat = "" }: RepoInputProps) {
     tokens.forEach((token) => {
       const urlMatch = token.match(githubUrlRegex);
       if (urlMatch) {
-        collector.add(`${urlMatch[1]}/${urlMatch[2]}`);
+        const repoName = normalizeRepoName(urlMatch[2]);
+        if (!repoName) return;
+        collector.add(`${urlMatch[1]}/${repoName}`);
         return;
       }
 
@@ -193,7 +207,9 @@ export function RepoInput({ onStart, initialPat = "" }: RepoInputProps) {
 
       const ownerRepoMatch = token.match(ownerRepoRegex);
       if (ownerRepoMatch) {
-        collector.add(`${ownerRepoMatch[1]}/${ownerRepoMatch[2]}`);
+        const repoName = normalizeRepoName(ownerRepoMatch[2]);
+        if (!repoName) return;
+        collector.add(`${ownerRepoMatch[1]}/${repoName}`);
       }
     });
   };

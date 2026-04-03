@@ -29,36 +29,6 @@ interface RepoCardFlag {
   className: string;
 }
 
-interface AgentStatusSnapshot {
-  connected: boolean;
-  configured: boolean;
-  cronRunning: boolean;
-  isExecuting: boolean;
-  runCounter: number;
-  currentActivity: string;
-  message: string | null;
-  lastErrorMessage: string | null;
-  lastRunFinishedAt: string | null;
-  lastRunSummary: string | null;
-  lastAlertSentCount: number;
-  lastAlertFailedCount: number;
-}
-
-const DEFAULT_AGENT_STATUS: AgentStatusSnapshot = {
-  connected: false,
-  configured: false,
-  cronRunning: false,
-  isExecuting: false,
-  runCounter: 0,
-  currentActivity: "Checking monitor state",
-  message: null,
-  lastErrorMessage: null,
-  lastRunFinishedAt: null,
-  lastRunSummary: null,
-  lastAlertSentCount: 0,
-  lastAlertFailedCount: 0,
-};
-
 function getRelativePushText(isoString: string | null): string {
   if (!isoString) return "N/A";
 
@@ -129,7 +99,10 @@ function parseRepoKey(repoLink: string): string | null {
   const parsePath = (pathValue: string) => {
     const parts = pathValue.split("/").filter(Boolean);
     if (parts.length < 2) return null;
-    return `${parts[0]}/${parts[1]}`;
+    const cleanRepo = parts[1].replace(/\.git$/, "");
+    const repoName = cleanRepo.replace(/\.git$/i, "");
+    if (!repoName) return null;
+    return `${parts[0]}/${repoName}`;
   };
 
   if (/^https?:\/\//i.test(trimmed)) {
@@ -150,6 +123,20 @@ function parseRepoKey(repoLink: string): string | null {
 }
 
 export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps) {
+  const normalizedRepos = useMemo(() => {
+    const seen = new Set<string>();
+    const cleaned: string[] = [];
+
+    repos.forEach((repoKey) => {
+      const normalized = parseRepoKey(repoKey);
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+      cleaned.push(normalized);
+    });
+
+    return cleaned;
+  }, [repos]);
+
   const {
     repoStates,
     pollStatus,
@@ -160,7 +147,7 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
     rateLimitState,
     hasFreshRateLimit,
     refreshingRepos,
-  } = usePoller({ repos, pat });
+  } = usePoller({ repos: normalizedRepos, pat });
 
   const apiRemainingDisplay =
     !hasFreshRateLimit && rateLimitState.remaining === 0 && rateLimitState.limit === 5000
@@ -172,8 +159,6 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
   const [sortKey, setSortKey] = useState<SortKey>("Name");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
-  const [agentStatus, setAgentStatus] = useState<AgentStatusSnapshot>(DEFAULT_AGENT_STATUS);
-  const [agentStatusLoading, setAgentStatusLoading] = useState(true);
 
   const handleLogout = async () => {
     try {
@@ -188,69 +173,6 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
     return () => document.body.classList.remove("menu-open");
   }, [mobileMenuOpen]);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchAgentStatus = async () => {
-      try {
-        const response = await fetch("/api/agent/status", { cache: "no-store" });
-
-        if (!response.ok) {
-          throw new Error(`Agent status request failed: ${response.status}`);
-        }
-
-        const payload = (await response.json()) as Partial<AgentStatusSnapshot>;
-
-        if (!isMounted) {
-          return;
-        }
-
-        setAgentStatus({
-          connected: Boolean(payload.connected),
-          configured: Boolean(payload.configured),
-          cronRunning: Boolean(payload.cronRunning),
-          isExecuting: Boolean(payload.isExecuting),
-          runCounter: Number(payload.runCounter ?? 0),
-          currentActivity: String(payload.currentActivity ?? DEFAULT_AGENT_STATUS.currentActivity),
-          message: payload.message ? String(payload.message) : null,
-          lastErrorMessage: payload.lastErrorMessage ? String(payload.lastErrorMessage) : null,
-          lastRunFinishedAt: payload.lastRunFinishedAt ? String(payload.lastRunFinishedAt) : null,
-          lastRunSummary: payload.lastRunSummary ? String(payload.lastRunSummary) : null,
-          lastAlertSentCount: Number(payload.lastAlertSentCount ?? 0),
-          lastAlertFailedCount: Number(payload.lastAlertFailedCount ?? 0),
-        });
-      } catch (error) {
-        if (!isMounted) {
-          return;
-        }
-
-        setAgentStatus((previous) => ({
-          ...previous,
-          connected: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : "Agent status request failed",
-        }));
-      } finally {
-        if (isMounted) {
-          setAgentStatusLoading(false);
-        }
-      }
-    };
-
-    void fetchAgentStatus();
-
-    const intervalId = window.setInterval(() => {
-      void fetchAgentStatus();
-    }, 15000);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
-  }, []);
-
   const formatCountdown = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -258,7 +180,7 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
   };
 
   const normalizedTeams = useMemo(() => {
-    const reposSet = new Set(repos);
+    const reposSet = new Set(normalizedRepos);
     const mapped = new Map<string, TeamProfile>();
 
     (teams || []).forEach((team) => {
@@ -272,7 +194,7 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
       });
     });
 
-    return repos.map((repoKey, index) => {
+    return normalizedRepos.map((repoKey, index) => {
       const existing = mapped.get(repoKey);
       if (existing) return existing;
       return {
@@ -282,7 +204,7 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
         repoLink: `https://github.com/${repoKey}`,
       };
     });
-  }, [repos, teams]);
+  }, [normalizedRepos, teams]);
 
   const allReposList = useMemo(() => {
     const teamByRepo = new Map<string, TeamProfile>();
@@ -291,7 +213,7 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
       if (key) teamByRepo.set(key, team);
     });
 
-    return repos.map((repoKey, index) => {
+    return normalizedRepos.map((repoKey, index) => {
       const data = repoStates.get(repoKey);
       const details = getRepoStatusAndDetails(data);
       const fallbackTeam: TeamProfile = {
@@ -302,7 +224,7 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
       };
       return { repoKey, data, details, team: teamByRepo.get(repoKey) || fallbackTeam };
     });
-  }, [repos, repoStates, normalizedTeams]);
+  }, [normalizedRepos, repoStates, normalizedTeams]);
 
   const stats = useMemo(() => {
     let active = 0;
@@ -317,8 +239,8 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
       else if (item.details.status === "Dead") dead++;
     }
 
-    return { active, idle, inactive, dead, total: repos.length };
-  }, [allReposList, repos.length]);
+    return { active, idle, inactive, dead, total: normalizedRepos.length };
+  }, [allReposList, normalizedRepos.length]);
 
   const groupedFilteredAndSorted = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -439,37 +361,6 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
     document.body.removeChild(link);
   };
 
-  const agentStateLabel = agentStatusLoading
-    ? "Checking"
-    : !agentStatus.configured
-      ? "Not Configured"
-      : !agentStatus.connected
-        ? "Offline"
-        : agentStatus.isExecuting
-          ? "Analyzing"
-          : agentStatus.cronRunning
-            ? "Active"
-            : "Paused";
-
-  const agentDotClass = agentStatusLoading
-    ? "bg-white/40"
-    : !agentStatus.configured || !agentStatus.connected
-      ? "bg-red-400"
-      : agentStatus.isExecuting
-        ? "bg-cyan-400"
-        : agentStatus.cronRunning
-          ? "bg-green-400"
-          : "bg-yellow-300";
-
-  const agentDetailText =
-    agentStatus.lastErrorMessage ||
-    agentStatus.message ||
-    agentStatus.currentActivity;
-
-  const agentLastRunText = agentStatus.lastRunFinishedAt
-    ? `Last run ${getRelativePushText(agentStatus.lastRunFinishedAt)}`
-    : "No runs yet";
-
   return (
     <div className="min-h-screen relative flex justify-center py-6 md:py-10 px-3 sm:px-4 md:px-6 font-sans overflow-x-hidden">
       <div className="fixed bottom-6 left-4 z-30 hidden md:block">
@@ -482,21 +373,6 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
           <LogOut className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
           Sign Out
         </button>
-      </div>
-
-      <div className="fixed bottom-6 right-4 z-30 hidden md:block">
-        <div className="max-w-[320px] px-4 py-3 rounded-2xl bg-white/10 border border-white/20 text-white backdrop-blur-xl shadow-lg">
-          <div className="flex items-center gap-2">
-            <span className={`h-2.5 w-2.5 rounded-full ${agentDotClass} ${agentStatus.isExecuting ? "animate-pulse" : ""}`} />
-            <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-white/60">AI Agent</span>
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-white">{agentStateLabel}</span>
-          </div>
-          <p className="mt-2 text-xs text-white/75">{agentDetailText}</p>
-          <p className="mt-1 text-[10px] text-white/55">{agentLastRunText}</p>
-          <p className="mt-1 text-[10px] text-white/55">
-            Alerts sent: {agentStatus.lastAlertSentCount} | failed: {agentStatus.lastAlertFailedCount}
-          </p>
-        </div>
       </div>
 
       <AnimatePresence>
@@ -536,13 +412,6 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
                 </div>
                 <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-xs text-white/70 font-mono uppercase tracking-wider shadow-lg">
                   Next Refresh: {pollStatus === "frozen" || pollStatus === "critical" ? "--:--" : formatCountdown(nextPollIn)}
-                </div>
-                <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-xs text-white/70 shadow-lg">
-                  <div className="flex items-center gap-2 font-mono uppercase tracking-wider">
-                    <span className={`h-2 w-2 rounded-full ${agentDotClass} ${agentStatus.isExecuting ? "animate-pulse" : ""}`} />
-                    AI Agent: <span className="text-cyan-300">{agentStateLabel}</span>
-                  </div>
-                  <p className="mt-2 text-[11px] text-white/60 normal-case tracking-normal">{agentDetailText}</p>
                 </div>
                 <button
                   type="button"

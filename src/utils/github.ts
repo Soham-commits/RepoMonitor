@@ -80,11 +80,27 @@ interface CacheEntry {
   data: unknown;
 }
 
+function normalizeRepoName(repoName: string): string {
+  const cleanRepo = repoName.replace(/\.git$/, "");
+  return cleanRepo.replace(/\.git$/i, "");
+}
+
+function normalizeOwnerRepo(
+  owner: string,
+  repo: string
+): { owner: string; repo: string } {
+  return {
+    owner: owner.trim(),
+    repo: normalizeRepoName(repo.trim()),
+  };
+}
+
 // Key format: "owner/repo:endpoint"
 const etagCache = new Map<string, CacheEntry>();
 
 function cacheKey(owner: string, repo: string, endpoint: string): string {
-  return `${owner}/${repo}:${endpoint}`;
+  const normalized = normalizeOwnerRepo(owner, repo);
+  return `${normalized.owner}/${normalized.repo}:${endpoint}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +112,8 @@ const lastPollTime = new Map<string, string>();
 let lastKnownRateLimitRemaining = 5000;
 
 function repoKey(owner: string, repo: string): string {
-  return `${owner}/${repo}`;
+  const normalized = normalizeOwnerRepo(owner, repo);
+  return `${normalized.owner}/${normalized.repo}`;
 }
 
 export function getLastPollTime(owner: string, repo: string): string {
@@ -381,16 +398,33 @@ export async function fetchRepoData(
   pat?: string,
   signal?: AbortSignal
 ): Promise<FetchRepoDataResult> {
+  const normalized = normalizeOwnerRepo(owner, repo);
+  const ownerName = normalized.owner;
+  const repoName = normalized.repo;
   let rateLimit: RateLimitState = { remaining: 5000, reset: 0, limit: 5000 };
+
+  if (!ownerName || !repoName) {
+    return {
+      repoInfo: null,
+      deltaCommits: [],
+      recentCommits: [],
+      fullCommits: null,
+      contributorCount: null,
+      contributors: null,
+      rateLimit,
+      tier: 1,
+      error: "not_found",
+    };
+  }
 
   // -------------------------------------------------------------------------
   // Tier 1: Repo info + delta commits (parallel)
   // -------------------------------------------------------------------------
   const tier2Allowed = lastKnownRateLimitRemaining > 2000;
   const [repoInfoResult, deltaResult, contributorsResult] = await Promise.all([
-    fetchRepoInfo(owner, repo, pat, signal),
-    fetchDeltaCommits(owner, repo, pat, signal),
-    tier2Allowed ? fetchContributors(owner, repo, pat, signal) : Promise.resolve(null),
+    fetchRepoInfo(ownerName, repoName, pat, signal),
+    fetchDeltaCommits(ownerName, repoName, pat, signal),
+    tier2Allowed ? fetchContributors(ownerName, repoName, pat, signal) : Promise.resolve(null),
   ]);
 
   if ("error" in repoInfoResult && repoInfoResult.error === "timeout") {
@@ -522,10 +556,10 @@ export async function fetchRepoData(
 
   // --- Tier 1b: Recent commits (last 30 total) ---
   const recentResult = await cachedGet<CommitData[]>(
-    owner,
-    repo,
+    ownerName,
+    repoName,
     "commits:recent",
-    `https://api.github.com/repos/${owner}/${repo}/commits?per_page=30`,
+    `https://api.github.com/repos/${ownerName}/${repoName}/commits?per_page=30`,
     pat,
     signal
   );
@@ -634,12 +668,12 @@ export async function fetchRepoData(
 
   // --- Tier 2b: Full hackathon window commits (paginated) ---
   const fullCommitsBaseUrl =
-    `https://api.github.com/repos/${owner}/${repo}/commits` +
+    `https://api.github.com/repos/${ownerName}/${repoName}/commits` +
     `?since=${encodeURIComponent(HACKATHON_START)}&until=${encodeURIComponent(HACKATHON_END)}&per_page=100`;
 
   const fullResult = await paginatedGet<CommitData[]>(
-    owner,
-    repo,
+    ownerName,
+    repoName,
     fullCommitsBaseUrl,
     pat,
     signal,
@@ -733,13 +767,21 @@ export async function fetchRepoInfo(
   pat?: string,
   signal?: AbortSignal
 ): Promise<FetchResult<RepoInfo>> {
+  const normalized = normalizeOwnerRepo(owner, repo);
+  const ownerName = normalized.owner;
+  const repoName = normalized.repo;
+
+  if (!ownerName || !repoName) {
+    return { error: "not_found", rateLimit: { remaining: 0, reset: 0, limit: 0 } };
+  }
+
   let result;
   try {
     result = await cachedGet<RepoInfo>(
-      owner,
-      repo,
+      ownerName,
+      repoName,
       "repo_info",
-      `https://api.github.com/repos/${owner}/${repo}`,
+      `https://api.github.com/repos/${ownerName}/${repoName}`,
       pat,
       signal
     );
@@ -767,10 +809,10 @@ export async function fetchRepoInfo(
 
   try {
     const latestCommitResult = await cachedGet<CommitData[]>(
-      owner,
-      repo,
+      ownerName,
+      repoName,
       "commits:default_latest",
-      `https://api.github.com/repos/${owner}/${repo}/commits?per_page=1`,
+      `https://api.github.com/repos/${ownerName}/${repoName}/commits?per_page=1`,
       pat,
       signal
     );
@@ -828,19 +870,27 @@ export async function fetchDeltaCommits(
   pat?: string,
   signal?: AbortSignal
 ): Promise<FetchResult<CommitData[]>> {
-  const since = getLastPollTime(owner, repo);
+  const normalized = normalizeOwnerRepo(owner, repo);
+  const ownerName = normalized.owner;
+  const repoName = normalized.repo;
+
+  if (!ownerName || !repoName) {
+    return { error: "not_found", rateLimit: { remaining: 0, reset: 0, limit: 0 } };
+  }
+
+  const since = getLastPollTime(ownerName, repoName);
   const until = HACKATHON_END;
   const now = new Date().toISOString();
 
   const url =
-    `https://api.github.com/repos/${owner}/${repo}/commits` +
+    `https://api.github.com/repos/${ownerName}/${repoName}/commits` +
     `?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}&per_page=100`;
 
   let result;
   try {
     result = await cachedGet<CommitData[]>(
-      owner,
-      repo,
+      ownerName,
+      repoName,
       `commits:delta:${since}`,
       url,
       pat,
@@ -866,7 +916,7 @@ export async function fetchDeltaCommits(
   const deltaSuccess2 = result as { data: CommitData[]; rateLimit: RateLimitState };
   const commits = filterCommits(deltaSuccess2.data ?? []);
 
-  setLastPollTime(owner, repo, now);
+  setLastPollTime(ownerName, repoName, now);
 
   if (commits.length === 0) {
     return { commits: [], status: "empty", rateLimit: deltaSuccess2.rateLimit };
@@ -885,13 +935,21 @@ export async function fetchContributors(
   pat?: string,
   signal?: AbortSignal
 ): Promise<FetchResult<ContributorData[]>> {
+  const normalized = normalizeOwnerRepo(owner, repo);
+  const ownerName = normalized.owner;
+  const repoName = normalized.repo;
+
+  if (!ownerName || !repoName) {
+    return { error: "not_found", rateLimit: { remaining: 0, reset: 0, limit: 0 } };
+  }
+
   let result;
   try {
     result = await cachedGet<ContributorData[]>(
-      owner,
-      repo,
+      ownerName,
+      repoName,
       "contributors",
-      `https://api.github.com/repos/${owner}/${repo}/contributors?per_page=100`,
+      `https://api.github.com/repos/${ownerName}/${repoName}/contributors?per_page=100`,
       pat,
       signal
     );
@@ -926,15 +984,23 @@ export async function fetchFullHackathonCommits(
   pat?: string,
   signal?: AbortSignal
 ): Promise<FetchResult<CommitData[]>> {
+  const normalized = normalizeOwnerRepo(owner, repo);
+  const ownerName = normalized.owner;
+  const repoName = normalized.repo;
+
+  if (!ownerName || !repoName) {
+    return { error: "not_found", rateLimit: { remaining: 0, reset: 0, limit: 0 } };
+  }
+
   const baseUrl =
-    `https://api.github.com/repos/${owner}/${repo}/commits` +
+    `https://api.github.com/repos/${ownerName}/${repoName}/commits` +
     `?since=${encodeURIComponent(HACKATHON_START)}&until=${encodeURIComponent(HACKATHON_END)}&per_page=100`;
 
   let result;
   try {
     result = await paginatedGet<CommitData[]>(
-      owner,
-      repo,
+      ownerName,
+      repoName,
       baseUrl,
       pat,
       signal,
@@ -993,7 +1059,8 @@ export async function getRateLimitState(
 
 export function clearEtagCache(owner?: string, repo?: string): void {
   if (owner && repo) {
-    const prefix = `${owner}/${repo}:`;
+    const normalized = normalizeOwnerRepo(owner, repo);
+    const prefix = `${normalized.owner}/${normalized.repo}:`;
     for (const key of etagCache.keys()) {
       if (key.startsWith(prefix)) etagCache.delete(key);
     }

@@ -46,6 +46,35 @@ export type UsePollerReturn = PollerState & PollerActions;
 
 const POLL_INTERVAL_SECONDS = 480; // 8 minutes
 
+function normalizeRepoName(repoName: string): string {
+  const cleanRepo = repoName.replace(/\.git$/, "");
+  return cleanRepo.replace(/\.git$/i, "");
+}
+
+function normalizeRepoKey(repoKey: string): string | null {
+  const trimmed = repoKey.trim().replace(/\/+$/, "");
+  if (!trimmed) return null;
+
+  const parts = trimmed.split("/").filter(Boolean);
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+
+  const owner = parts[0].trim();
+  const repo = normalizeRepoName(parts[1].trim());
+  if (!owner || !repo) return null;
+
+  return `${owner}/${repo}`;
+}
+
+function normalizeRepoList(repos: string[]): string[] {
+  return Array.from(
+    new Set(
+      repos
+        .map((repo) => normalizeRepoKey(repo))
+        .filter((repo): repo is string => Boolean(repo))
+    )
+  );
+}
+
 // Repos with zero hackathon commits whose last-known status was inactive get
 // skipped in degraded mode.
 function isRepoActive(result: FetchRepoDataResult): boolean {
@@ -108,7 +137,9 @@ function prioritizeRepos(
 export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
   // ---- Stable config ref (avoid stale closures in callbacks) ----
   const configRef = useRef<PollerConfig>(
-    initialConfig ?? { repos: [], pat: undefined }
+    initialConfig
+      ? { ...initialConfig, repos: normalizeRepoList(initialConfig.repos) }
+      : { repos: [], pat: undefined }
   );
 
   // ---- Worker ref ----
@@ -214,7 +245,8 @@ export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
     if (!workerRef.current) return;
     if (pollingLockRef.current) return; // already polling — ignore
 
-    const { repos, pat } = configRef.current;
+    const { pat } = configRef.current;
+    const repos = normalizeRepoList(configRef.current.repos);
 
     // Soft cap: in degraded mode skip repos with known zero hackathon commits
     let reposToFetch = repos;
@@ -444,7 +476,10 @@ export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
    */
   const startPolling = useCallback(
     (config: PollerConfig) => {
-      configRef.current = config;
+      configRef.current = {
+        ...config,
+        repos: normalizeRepoList(config.repos),
+      };
 
       // Stop any current poll
       sendToWorker({ type: "STOP" });

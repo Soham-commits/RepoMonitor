@@ -58,10 +58,31 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function parseRepo(repoStr: string): { owner: string; repo: string } | null {
-  const parts = repoStr.split("/");
+function normalizeRepoName(repoName: string): string {
+  const cleanRepo = repoName.replace(/\.git$/, "");
+  return cleanRepo.replace(/\.git$/i, "");
+}
+
+function normalizeRepoString(repoStr: string): string | null {
+  const trimmed = repoStr.trim().replace(/\/+$/, "");
+  if (!trimmed) return null;
+
+  const parts = trimmed.split("/").filter(Boolean);
   if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
-  return { owner: parts[0], repo: parts[1] };
+
+  const owner = parts[0].trim();
+  const repo = normalizeRepoName(parts[1].trim());
+  if (!owner || !repo) return null;
+
+  return `${owner}/${repo}`;
+}
+
+function parseRepo(repoStr: string): { owner: string; repo: string } | null {
+  const normalized = normalizeRepoString(repoStr);
+  if (!normalized) return null;
+
+  const [owner, repo] = normalized.split("/");
+  return { owner, repo };
 }
 
 // ---------------------------------------------------------------------------
@@ -82,10 +103,18 @@ async function runPoll(
     limit: 5000,
   };
 
+  const normalizedRepos = Array.from(
+    new Set(
+      repos
+        .map((repo) => normalizeRepoString(repo))
+        .filter((repo): repo is string => Boolean(repo))
+    )
+  );
+
   // Split repos into batches of BATCH_SIZE
   const batches: string[][] = [];
-  for (let i = 0; i < repos.length; i += BATCH_SIZE) {
-    batches.push(repos.slice(i, i + BATCH_SIZE));
+  for (let i = 0; i < normalizedRepos.length; i += BATCH_SIZE) {
+    batches.push(normalizedRepos.slice(i, i + BATCH_SIZE));
   }
 
   outer: for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {

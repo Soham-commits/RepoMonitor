@@ -26,6 +26,19 @@ interface CommitItem {
 
 type LoadState = "idle" | "loading" | "error" | "done";
 
+function normalizeRepoKey(repoKey: string): string {
+  const trimmed = repoKey.trim().replace(/\/+$/, "");
+  const parts = trimmed.split("/").filter(Boolean);
+  if (parts.length < 2) return trimmed;
+
+  const owner = parts[0];
+  const cleanRepo = parts[1].replace(/\.git$/, "");
+  const repo = cleanRepo.replace(/\.git$/i, "");
+  if (!owner || !repo) return trimmed;
+
+  return `${owner}/${repo}`;
+}
+
 function formatRelativeTime(isoString: string): string {
   const now = Date.now();
   const time = new Date(isoString).getTime();
@@ -44,7 +57,8 @@ export function CommitModal({ repoKey, pat, onClose }: CommitModalProps) {
   const [state, setState] = useState<LoadState>("idle");
   const [commits, setCommits] = useState<CommitItem[]>([]);
 
-  const [owner, repo] = useMemo(() => repoKey.split("/"), [repoKey]);
+  const normalizedRepoKey = useMemo(() => normalizeRepoKey(repoKey), [repoKey]);
+  const [owner, repo] = useMemo(() => normalizedRepoKey.split("/"), [normalizedRepoKey]);
 
   useEffect(() => {
     let isMounted = true;
@@ -113,12 +127,12 @@ export function CommitModal({ repoKey, pat, onClose }: CommitModalProps) {
         <div className="flex items-center justify-between px-8 py-6 border-b border-white/15">
           <div className="flex flex-col gap-1">
             <a
-              href={`https://github.com/${repoKey}`}
+              href={`https://github.com/${normalizedRepoKey}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-white font-bold hover:text-[#1E2CFF] transition-colors tracking-tight"
             >
-              {repoKey}
+              {normalizedRepoKey}
             </a>
             <span className="text-[10px] text-white/40 uppercase font-black tracking-widest">{headerCountLabel}</span>
           </div>

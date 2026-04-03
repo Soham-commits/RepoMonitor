@@ -23,11 +23,34 @@ interface ParsedTeamResult {
 const REQUIRED_COLUMN_ERROR = "Could not detect required columns. Check your file format";
 
 const normalizeHeader = (value: string) =>
-  value.trim().toLowerCase().replace(/\s+/g, "").replace(/_/g, "").replace(/-/g, "");
+  value.trim().replace(/\.+$/g, "").toLowerCase().replace(/\s+/g, "").replace(/_/g, "").replace(/-/g, "");
 
 const findHeaderKey = (headers: string[], aliases: string[]) => {
   const aliasSet = new Set(aliases.map((alias) => normalizeHeader(alias)));
   return headers.find((header) => aliasSet.has(normalizeHeader(header)));
+};
+
+const isEmptyCellValue = (value: unknown) => {
+  if (value === null || value === undefined) {
+    return true;
+  }
+
+  return String(value).trim() === "";
+};
+
+const getCandidateHeaders = (rows: Record<string, unknown>[]) => {
+  if (!rows.length) {
+    return [];
+  }
+
+  return Object.keys(rows[0]).filter((header) => {
+    const normalizedHeader = normalizeHeader(header);
+    if (!normalizedHeader || normalizedHeader === "column1") {
+      return false;
+    }
+
+    return rows.some((row) => !isEmptyCellValue(row[header]));
+  });
 };
 
 const parseTeamsFromRows = (rows: Record<string, unknown>[]): ParsedTeamResult => {
@@ -35,24 +58,37 @@ const parseTeamsFromRows = (rows: Record<string, unknown>[]): ParsedTeamResult =
     return { teams: [], hasRequiredColumns: false };
   }
 
-  const headers = Object.keys(rows[0]);
-  const teamIdKey = findHeaderKey(headers, ["Team ID", "team_id", "teamid"]);
+  const headers = getCandidateHeaders(rows);
+  const teamIdKey = findHeaderKey(headers, ["Your Team ID", "Team ID", "team_id", "teamid"]);
   const teamNameKey = findHeaderKey(headers, ["Team Name", "team_name", "teamname"]);
-  const psIdKey = findHeaderKey(headers, ["PS ID", "ps_id", "psid"]);
-  const repoLinkKey = findHeaderKey(headers, ["GitHub Repo Link", "github_repo", "repo", "repo_link"]);
+  const psIdKey = findHeaderKey(headers, ["Your Problem Statement ID", "PS ID", "ps_id", "psid"]);
+  const repoLinkKey = findHeaderKey(headers, [
+    "GitHub Repository link",
+    "GitHub Repository link.",
+    "GitHub Repo Link",
+    "github_repo",
+    "repo",
+    "repo_link",
+  ]);
 
-  if (!teamIdKey || !teamNameKey || !psIdKey || !repoLinkKey) {
+  if (!teamIdKey || !psIdKey || !repoLinkKey) {
     return { teams: [], hasRequiredColumns: false };
   }
 
   const teams = rows
-    .map((row) => ({
-      teamId: String(row[teamIdKey] ?? "").trim(),
-      teamName: String(row[teamNameKey] ?? "").trim(),
-      psId: String(row[psIdKey] ?? "").trim(),
-      repoLink: String(row[repoLinkKey] ?? "").trim(),
-    }))
-    .filter((team) => team.teamId && team.teamName && team.psId && team.repoLink);
+    .map((row) => {
+      const teamId = String(row[teamIdKey] ?? "").trim();
+      const teamNameValue = teamNameKey ? String(row[teamNameKey] ?? "").trim() : "";
+      const repoLinkValue = String(row[repoLinkKey] ?? "").trim().replace(/\/+$/, "").replace(/\.git$/i, "");
+
+      return {
+        teamId,
+        teamName: teamNameValue || teamId,
+        psId: String(row[psIdKey] ?? "").trim(),
+        repoLink: repoLinkValue,
+      };
+    })
+    .filter((team) => team.teamId && team.psId && team.repoLink);
 
   return { teams, hasRequiredColumns: true };
 };
@@ -89,7 +125,10 @@ const parseRepoKey = (repoLink: string): string | null => {
   const parsePath = (pathValue: string) => {
     const parts = pathValue.split("/").filter(Boolean);
     if (parts.length < 2) return null;
-    return `${parts[0]}/${parts[1]}`;
+    const cleanRepo = parts[1].replace(/\.git$/, "");
+    const repoName = cleanRepo.replace(/\.git$/i, "");
+    if (!repoName) return null;
+    return `${parts[0]}/${repoName}`;
   };
 
   if (/^https?:\/\//i.test(trimmed)) {
@@ -122,7 +161,9 @@ const sanitizeTeamsPayload = (value: unknown): TeamProfile[] => {
       const teamId = typeof team.teamId === "string" ? team.teamId.trim() : "";
       const teamName = typeof team.teamName === "string" ? team.teamName.trim() : "";
       const psId = typeof team.psId === "string" ? team.psId.trim() : "";
-      const repoLink = typeof team.repoLink === "string" ? team.repoLink.trim() : "";
+      const repoLink = typeof team.repoLink === "string"
+        ? team.repoLink.trim().replace(/\/+$/, "").replace(/\.git$/i, "")
+        : "";
 
       if (!teamId || !teamName || !psId || !repoLink) {
         return null;
