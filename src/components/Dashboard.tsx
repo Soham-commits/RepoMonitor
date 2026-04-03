@@ -22,6 +22,7 @@ interface RepoRowItem {
   data?: FetchRepoDataResult;
   details: ReturnType<typeof getRepoStatusAndDetails>;
   team: TeamProfile;
+  isInvalidUrl?: boolean;
 }
 
 interface RepoCardFlag {
@@ -51,6 +52,7 @@ function getStatusBadgeClass(statusText: string): string {
   if (statusText === "Idle") return "bg-yellow-400 text-black";
   if (statusText === "Inactive") return "bg-red-500 text-white";
   if (statusText === "Dead") return "bg-white/8 text-white/45 border border-white/15";
+  if (statusText === "INVALID URL") return "bg-orange-500 text-black";
   if (statusText === "TIMEOUT") return "bg-[#6A3DFF] text-black";
   if (statusText === "Error") return "bg-red-900/50 text-red-200 border border-red-500/30";
   if (statusText === "PRIVATE") return "bg-white/8 text-white/70 border border-white/15";
@@ -65,6 +67,16 @@ function getCardMeta(item: RepoRowItem): {
   flags: RepoCardFlag[];
 } {
   const { data, details } = item;
+  if (item.isInvalidUrl) {
+    return {
+      statusText: "INVALID URL",
+      statusClass: getStatusBadgeClass("INVALID URL"),
+      lastPushText: "-",
+      commitCount: "-",
+      flags: [{ text: "INVALID URL", className: "bg-orange-500 text-black" }],
+    };
+  }
+
   const isPrivate = data?.error === "not_found" || data?.repoInfo?.visibility === "private";
   const isTimeout = data?.error === "timeout";
 
@@ -93,14 +105,18 @@ function getCardMeta(item: RepoRowItem): {
 }
 
 function parseRepoKey(repoLink: string): string | null {
-  const trimmed = repoLink.trim().replace(/\.git$/i, "");
+  const trimmed = repoLink
+    .trim()
+    .replace(/\/tree\/.*$/, "")
+    .replace(/\/blob\/.*$/, "")
+    .replace(/\/+$/, "");
   if (!trimmed) return null;
 
   const parsePath = (pathValue: string) => {
     const parts = pathValue.split("/").filter(Boolean);
     if (parts.length < 2) return null;
-    const cleanRepo = parts[1].replace(/\.git$/, "");
-    const repoName = cleanRepo.replace(/\.git$/i, "");
+    const cleanRepo = parts[1].replace(/\.git$/, "").replace(/\/$/, "");
+    const repoName = cleanRepo.replace(/\.git$/i, "").replace(/\/$/, "");
     if (!repoName) return null;
     return `${parts[0]}/${repoName}`;
   };
@@ -206,6 +222,30 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
     });
   }, [normalizedRepos, teams]);
 
+  const invalidTeams = useMemo(() => {
+    const invalid: TeamProfile[] = [];
+    const seen = new Set<string>();
+
+    (teams || []).forEach((team) => {
+      const rawLink = team.repoLink?.trim() || "";
+      if (!rawLink) return;
+      if (parseRepoKey(rawLink)) return;
+
+      const unique = `${team.teamId}:${rawLink}`;
+      if (seen.has(unique)) return;
+      seen.add(unique);
+
+      invalid.push({
+        teamId: team.teamId,
+        teamName: team.teamName,
+        psId: team.psId || "Ungrouped",
+        repoLink: rawLink,
+      });
+    });
+
+    return invalid;
+  }, [teams]);
+
   const allReposList = useMemo(() => {
     const teamByRepo = new Map<string, TeamProfile>();
     normalizedTeams.forEach((team) => {
@@ -213,7 +253,7 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
       if (key) teamByRepo.set(key, team);
     });
 
-    return normalizedRepos.map((repoKey, index) => {
+    const validRepoItems = normalizedRepos.map((repoKey, index) => {
       const data = repoStates.get(repoKey);
       const details = getRepoStatusAndDetails(data);
       const fallbackTeam: TeamProfile = {
@@ -222,9 +262,32 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
         psId: "Ungrouped",
         repoLink: `https://github.com/${repoKey}`,
       };
-      return { repoKey, data, details, team: teamByRepo.get(repoKey) || fallbackTeam };
+      return {
+        repoKey,
+        data,
+        details,
+        team: teamByRepo.get(repoKey) || fallbackTeam,
+        isInvalidUrl: false,
+      };
     });
-  }, [normalizedRepos, repoStates, normalizedTeams]);
+
+    const invalidRepoItems: RepoRowItem[] = invalidTeams.map((team) => ({
+      repoKey: team.repoLink,
+      data: undefined,
+      details: {
+        status: "Error" as RepoStatus,
+        lastPushIso: null,
+        commitsCount: 0,
+        recentCommitsCount: 0,
+        contributorsCount: null,
+        lastCommitMessage: "Not a GitHub repo",
+      },
+      team,
+      isInvalidUrl: true,
+    }));
+
+    return [...validRepoItems, ...invalidRepoItems];
+  }, [normalizedRepos, repoStates, normalizedTeams, invalidTeams]);
 
   const stats = useMemo(() => {
     let active = 0;
@@ -239,8 +302,8 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
       else if (item.details.status === "Dead") dead++;
     }
 
-    return { active, idle, inactive, dead, total: normalizedRepos.length };
-  }, [allReposList, normalizedRepos.length]);
+    return { active, idle, inactive, dead, total: allReposList.length };
+  }, [allReposList]);
 
   const groupedFilteredAndSorted = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -318,18 +381,27 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
 
     groupedFilteredAndSorted.forEach(([psId, items]) => {
       items.forEach((item, index) => {
-        const [owner, repo] = item.repoKey.split("/");
-        const lastPushIso = item.details.lastPushIso || "";
-        const commits = item.details.commitsCount;
-        const activity = item.details.recentCommitsCount;
-        const contributors = item.details.contributorsCount !== null ? String(item.details.contributorsCount) : "";
+        const [owner, repo] = item.isInvalidUrl
+          ? ["", item.team.repoLink]
+          : item.repoKey.split("/");
+        const statusText = item.isInvalidUrl ? "Invalid URL" : item.details.status;
+        const lastPushIso = item.isInvalidUrl ? "" : (item.details.lastPushIso || "");
+        const commits = item.isInvalidUrl ? 0 : item.details.commitsCount;
+        const activity = item.isInvalidUrl ? 0 : item.details.recentCommitsCount;
+        const contributors = item.isInvalidUrl
+          ? ""
+          : (item.details.contributorsCount !== null ? String(item.details.contributorsCount) : "");
 
         const flags: string[] = [];
         const data = item.data;
-        if (item.details.status === "Error" && data?.error === "not_found") flags.push("Private/NotFound");
-        else if (data?.repoInfo?.visibility === "private") flags.push("Private");
-        if (commits === 0 && item.details.status !== "Loading" && item.details.status !== "Error") flags.push("ZeroCommits");
-        if (contributors === "1") flags.push("SoloContributor");
+        if (item.isInvalidUrl) {
+          flags.push("InvalidURL");
+        } else {
+          if (item.details.status === "Error" && data?.error === "not_found") flags.push("Private/NotFound");
+          else if (data?.repoInfo?.visibility === "private") flags.push("Private");
+          if (commits === 0 && item.details.status !== "Loading" && item.details.status !== "Error") flags.push("ZeroCommits");
+          if (contributors === "1") flags.push("SoloContributor");
+        }
 
         rows.push(
           [
@@ -339,7 +411,7 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
             `"${item.team.teamName}"`,
             `"${owner}"`,
             `"${repo}"`,
-            `"${item.details.status}"`,
+            `"${statusText}"`,
             `"${lastPushIso}"`,
             commits,
             activity,
@@ -720,20 +792,28 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
                   {items.map((item, index) => {
                     const [ownerName, repoName] = item.repoKey.split("/");
                     const card = getCardMeta(item);
+                    const invalidExternal = /^https?:\/\//i.test(item.team.repoLink);
 
                     return (
                       <article key={item.repoKey} className="rounded-2xl border border-white/20 bg-white/10 backdrop-blur-xl p-4 shadow-lg">
                         <div className="flex items-start justify-between gap-3">
-                          <a
-                            href={`https://github.com/${item.repoKey}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="min-w-0 text-white font-semibold leading-tight"
-                          >
-                            <span className="block text-white/70 text-xs">#{index + 1}</span>
-                            <span className="block truncate text-white/80 text-xs">{ownerName}/</span>
-                            <span className="block truncate text-sm">{repoName || item.repoKey}</span>
-                          </a>
+                          {item.isInvalidUrl ? (
+                            <div className="min-w-0 text-white font-semibold leading-tight">
+                              <span className="block text-white/70 text-xs">#{index + 1}</span>
+                              <span className="block break-all text-sm">{item.team.repoLink}</span>
+                            </div>
+                          ) : (
+                            <a
+                              href={`https://github.com/${item.repoKey}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="min-w-0 text-white font-semibold leading-tight"
+                            >
+                              <span className="block text-white/70 text-xs">#{index + 1}</span>
+                              <span className="block truncate text-white/80 text-xs">{ownerName}/</span>
+                              <span className="block truncate text-sm">{repoName || item.repoKey}</span>
+                            </a>
+                          )}
                           <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wide ${card.statusClass}`}>
                             {card.statusText}
                           </span>
@@ -765,15 +845,31 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
                               <span className="text-white/30 text-[10px]">-</span>
                             )}
                           </div>
-                          <a
-                            href={`https://github.com/${item.repoKey}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[#B06CFF] inline-flex items-center gap-1 text-xs"
-                          >
-                            Open
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
+                          {item.isInvalidUrl ? (
+                            invalidExternal ? (
+                              <a
+                                href={item.team.repoLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-orange-300 inline-flex items-center gap-1 text-xs"
+                              >
+                                Open
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            ) : (
+                              <span className="text-orange-300 text-xs uppercase font-semibold tracking-wide">Invalid</span>
+                            )
+                          ) : (
+                            <a
+                              href={`https://github.com/${item.repoKey}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[#B06CFF] inline-flex items-center gap-1 text-xs"
+                            >
+                              Open
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
                         </div>
                       </article>
                     );
@@ -804,6 +900,8 @@ export function Dashboard({ repos, pat, teams, onUploadNewData }: DashboardProps
                           teamName={item.team.teamName}
                           data={item.data}
                           isRefreshing={refreshingRepos.has(item.repoKey)}
+                          invalidUrl={item.isInvalidUrl}
+                          repoLink={item.team.repoLink}
                         />
                       ))}
                     </tbody>

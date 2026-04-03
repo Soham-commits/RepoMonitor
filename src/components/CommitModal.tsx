@@ -32,8 +32,8 @@ function normalizeRepoKey(repoKey: string): string {
   if (parts.length < 2) return trimmed;
 
   const owner = parts[0];
-  const cleanRepo = parts[1].replace(/\.git$/, "");
-  const repo = cleanRepo.replace(/\.git$/i, "");
+  const cleanRepo = parts[1].replace(/\.git$/, "").replace(/\/$/, "");
+  const repo = cleanRepo.replace(/\.git$/i, "").replace(/\/$/, "");
   if (!owner || !repo) return trimmed;
 
   return `${owner}/${repo}`;

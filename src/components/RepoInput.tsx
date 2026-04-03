@@ -22,13 +22,14 @@ interface ParsedUrl {
   owner: string;
   repo: string;
   isValidFormat: boolean;
+  invalidUrl?: boolean;
 }
 
 interface ValidationResult {
   url: string;
   owner?: string;
   repo?: string;
-  status: "valid" | "not_found_or_private" | "invalid_format" | "rate_limited" | "error";
+  status: "valid" | "not_found_or_private" | "invalid_format" | "invalid_url" | "rate_limited" | "error";
   reason?: string;
 }
 
@@ -52,14 +53,18 @@ const findHeaderKey = (headers: string[], aliases: string[]) => {
 };
 
 const normalizeRepoName = (repoName: string) => {
-  const cleanRepo = repoName.replace(/\.git$/, "");
-  return cleanRepo.replace(/\.git$/i, "");
+  const cleanRepo = repoName.replace(/\.git$/, "").replace(/\/$/, "");
+  return cleanRepo.replace(/\.git$/i, "").replace(/\/$/, "");
 };
 
 function parseRepoUrl(input: string): ParsedUrl {
   let url = input.trim();
-  // Strip trailing slashes and .git
-  url = url.replace(/\/+$/, "").replace(/\.git$/i, "");
+  // Strip non-repo suffixes and trailing slash before parsing.
+  url = url
+    .replace(/\/tree\/.*$/, "")
+    .replace(/\/blob\/.*$/, "")
+    .replace(/\/+$/, "")
+    .replace(/\.git$/i, "");
   
   const parsed = {
     original: input,
@@ -71,7 +76,9 @@ function parseRepoUrl(input: string): ParsedUrl {
   try {
     if (url.startsWith("http://") || url.startsWith("https://")) {
       const target = new URL(url);
-      if (target.hostname !== "github.com") return parsed;
+      if (!target.hostname.toLowerCase().includes("github.com")) {
+        return { ...parsed, invalidUrl: true };
+      }
       const parts = target.pathname.split("/").filter(Boolean);
       if (parts.length >= 2) {
         const repo = normalizeRepoName(parts[1]);
@@ -89,6 +96,8 @@ function parseRepoUrl(input: string): ParsedUrl {
         parsed.repo = repo;
         parsed.isValidFormat = true;
       }
+    } else if (url.includes(".com") || url.includes("http") || url.startsWith("www.")) {
+      return { ...parsed, invalidUrl: true };
     } else {
       const parts = url.split("/").filter(Boolean);
       if (parts.length === 2) {
@@ -127,7 +136,11 @@ const parseTeamsFromRows = (rows: Record<string, unknown>[]): ParsedTeamResult =
       const teamName = String(row[teamNameKey] ?? "").trim();
       const psId = String(row[psIdKey] ?? "").trim();
       const repoLink = String(row[repoLinkKey] ?? "").trim();
-      const normalizedRepoLink = repoLink.replace(/\/+$/, "").replace(/\.git$/i, "");
+      const normalizedRepoLink = repoLink
+        .replace(/\/tree\/.*$/, "")
+        .replace(/\/blob\/.*$/, "")
+        .replace(/\/+$/, "")
+        .replace(/\.git$/i, "");
       const parsedRepo = parseRepoUrl(repoLink);
 
       if (!teamId || !teamName || !psId || !repoLink || !parsedRepo.isValidFormat) {
@@ -171,7 +184,7 @@ export function RepoInput({ onStart, initialPat = "" }: RepoInputProps) {
       .filter((line) => line.length > 0);
   }, [repoText]);
 
-  const githubUrlRegex = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)\/?$/i;
+  const githubUrlRegex = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)(?:\/.*)?$/i;
   const ownerRepoRegex = /^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/i;
 
   const appendReposToTextarea = (repos: string[]) => {
@@ -381,8 +394,8 @@ export function RepoInput({ onStart, initialPat = "" }: RepoInputProps) {
       if (!parsed.isValidFormat) {
         currentResults.push({
           url: line,
-          status: "invalid_format",
-          reason: "Invalid GitHub URL format",
+          status: parsed.invalidUrl ? "invalid_url" : "invalid_format",
+          reason: parsed.invalidUrl ? "Not a GitHub repo" : "Invalid GitHub URL format",
         });
         setProgress((prev) => ({ ...prev, current: prev.current + 1 }));
       } else {

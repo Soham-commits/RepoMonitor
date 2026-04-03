@@ -10,6 +10,8 @@ interface RepoRowProps {
   teamName?: string;
   data?: FetchRepoDataResult;
   isRefreshing?: boolean;
+  invalidUrl?: boolean;
+  repoLink?: string;
 }
 
 export type RepoStatus = "Active" | "Idle" | "Inactive" | "Dead" | "Timeout" | "Error" | "Loading";
@@ -27,7 +29,7 @@ export function getRepoStatusAndDetails(data?: FetchRepoDataResult): {
   if (data.error) return { status: "Error", lastPushIso: null, commitsCount: 0, recentCommitsCount: 0, contributorsCount: null, lastCommitMessage: null };
 
   const lastPushIso = data.repoInfo?.pushed_at || null;
-  const commitsCount = (data.fullCommits ? data.fullCommits.length : 0) + (data.deltaCommits ? data.deltaCommits.length : 0);
+  const commitsCount = data.fullCommits ? data.fullCommits.length : 0;
   const recentCommitsCount = data.recentCommits?.length || 0;
   const contributorsCount = data.contributorCount;
   
@@ -87,14 +89,22 @@ function normalizeRepoKey(repoKey: string): string {
   if (parts.length < 2) return trimmed;
 
   const owner = parts[0];
-  const cleanRepo = parts[1].replace(/\.git$/, "");
-  const repo = cleanRepo.replace(/\.git$/i, "");
+  const cleanRepo = parts[1].replace(/\.git$/, "").replace(/\/$/, "");
+  const repo = cleanRepo.replace(/\.git$/i, "").replace(/\/$/, "");
   if (!owner || !repo) return trimmed;
 
   return `${owner}/${repo}`;
 }
 
-function RepoRowComponent({ index, repoKey, teamName, data, isRefreshing = false }: RepoRowProps) {
+function RepoRowComponent({
+  index,
+  repoKey,
+  teamName,
+  data,
+  isRefreshing = false,
+  invalidUrl = false,
+  repoLink,
+}: RepoRowProps) {
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
@@ -109,10 +119,13 @@ function RepoRowComponent({ index, repoKey, teamName, data, isRefreshing = false
 
   // Flags as solid badges
   const flags: Array<{ text: string; color: string; title?: string }> = [];
+  const isInvalidUrlFlag = invalidUrl;
   const isPrivateFlag = data?.error === "not_found" || data?.repoInfo?.visibility === "private";
   const isTimeoutFlag = data?.error === "timeout";
 
-  if (isPrivateFlag) {
+  if (isInvalidUrlFlag) {
+    flags.push({ text: "INVALID URL", color: "bg-orange-500 text-black" });
+  } else if (isPrivateFlag) {
     flags.push({ text: "PRIVATE", color: "bg-gray-500 text-white" });
   } else {
     if (isTimeoutFlag) {
@@ -132,10 +145,18 @@ function RepoRowComponent({ index, repoKey, teamName, data, isRefreshing = false
     }
   }
 
-  const isPrivateRow = isPrivateFlag;
-  const statusText = isPrivateRow ? "PRIVATE" : status === "Timeout" ? "TIMEOUT" : status;
+  const isDataUnavailableRow = isInvalidUrlFlag || isPrivateFlag;
+  const statusText = isInvalidUrlFlag
+    ? "INVALID URL"
+    : isPrivateFlag
+      ? "PRIVATE"
+      : status === "Timeout"
+        ? "TIMEOUT"
+        : status;
   const normalizedRepoKey = normalizeRepoKey(repoKey);
   const [ownerName, repoName] = normalizedRepoKey.split("/");
+  const externalRepoLink = repoLink?.trim() || null;
+  const canOpenExternal = Boolean(externalRepoLink && /^https?:\/\//i.test(externalRepoLink));
 
   const relativePush = formatRelativeTime(lastPushIso);
 
@@ -154,19 +175,36 @@ function RepoRowComponent({ index, repoKey, teamName, data, isRefreshing = false
       {/* Repository */}
       <td className="py-6 px-4 align-middle">
         <div className="space-y-1">
-          <a
-            href={`https://github.com/${normalizedRepoKey}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            title={normalizedRepoKey}
-            className="text-white font-bold hover:text-[#1E2CFF] transition-all inline-flex items-center gap-1.5 text-sm tracking-tight"
-          >
-            <span className="leading-tight">
-              <span className="block text-white/85">{ownerName}/</span>
-              <span className="block text-white">{repoName || normalizedRepoKey}</span>
-            </span>
-            <ExternalLink className="w-3 h-3 text-[#1E2CFF]" />
-          </a>
+          {isInvalidUrlFlag ? (
+            <div className="inline-flex items-start gap-1.5 text-sm tracking-tight text-white font-bold">
+              <span className="leading-tight break-all">{externalRepoLink || repoKey}</span>
+              {canOpenExternal && (
+                <a
+                  href={externalRepoLink as string}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={externalRepoLink as string}
+                  className="text-orange-400 hover:text-orange-300 transition-all"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+            </div>
+          ) : (
+            <a
+              href={`https://github.com/${normalizedRepoKey}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={normalizedRepoKey}
+              className="text-white font-bold hover:text-[#1E2CFF] transition-all inline-flex items-center gap-1.5 text-sm tracking-tight"
+            >
+              <span className="leading-tight">
+                <span className="block text-white/85">{ownerName}/</span>
+                <span className="block text-white">{repoName || normalizedRepoKey}</span>
+              </span>
+              <ExternalLink className="w-3 h-3 text-[#1E2CFF]" />
+            </a>
+          )}
           {teamName && (
             <p className="text-[11px] text-white/45 font-medium leading-tight truncate" title={teamName}>
               {teamName}
@@ -178,9 +216,9 @@ function RepoRowComponent({ index, repoKey, teamName, data, isRefreshing = false
       {/* Last Activity */}
       <td
         className="py-6 px-3 align-middle whitespace-nowrap"
-        title={!isPrivateRow && lastPushIso ? new Date(lastPushIso).toISOString() : undefined}
+        title={!isDataUnavailableRow && lastPushIso ? new Date(lastPushIso).toISOString() : undefined}
       >
-        {isPrivateRow ? (
+        {isDataUnavailableRow ? (
           <span className="text-white/10">—</span>
         ) : (
           <span className={`font-mono text-xs font-bold ${relativePush.colorClass}`}>
@@ -191,7 +229,7 @@ function RepoRowComponent({ index, repoKey, teamName, data, isRefreshing = false
 
       {/* Commit Volume */}
       <td className="py-6 px-2 align-middle whitespace-nowrap text-center">
-        {isPrivateRow ? (
+        {isDataUnavailableRow ? (
           <span className="text-white/10">—</span>
         ) : (
           <span className={`text-lg font-black font-mono tracking-tighter ${commitsCount > 0 ? "text-green-400" : "text-red-400"}`}>
@@ -202,7 +240,7 @@ function RepoRowComponent({ index, repoKey, teamName, data, isRefreshing = false
 
       {/* 30D Pulse */}
       <td className="py-6 px-2 align-middle whitespace-nowrap text-center">
-        {isPrivateRow ? (
+        {isDataUnavailableRow ? (
           <span className="text-white/10">—</span>
         ) : (
           <div className="flex flex-col items-center">
@@ -213,15 +251,15 @@ function RepoRowComponent({ index, repoKey, teamName, data, isRefreshing = false
 
       {/* Contributor */}
       <td className="py-6 px-2 align-middle whitespace-nowrap text-center text-white font-mono font-bold text-base">
-        {isPrivateRow ? <span className="text-white/10">—</span> : (contributorsCount !== null ? contributorsCount : (status === "Error" ? "?" : "—"))}
+        {isDataUnavailableRow ? <span className="text-white/10">—</span> : (contributorsCount !== null ? contributorsCount : (status === "Error" ? "?" : "—"))}
       </td>
 
       {/* Last Commit Message (Limited to 2 lines) */}
       <td
         className="py-6 px-2 align-middle"
-        title={!isPrivateRow && lastCommitMessage ? lastCommitMessage.replace(/^["']|["']$/g, '') : undefined}
+        title={!isDataUnavailableRow && lastCommitMessage ? lastCommitMessage.replace(/^["']|["']$/g, '') : undefined}
       >
-        {isPrivateRow ? (
+        {isDataUnavailableRow ? (
           <span className="text-white/10 italic text-[10px]">—</span>
         ) : status === "Loading" ? (
           <span className="text-white/20 italic text-[10px] animate-pulse">Scanning...</span>
@@ -237,14 +275,15 @@ function RepoRowComponent({ index, repoKey, teamName, data, isRefreshing = false
       {/* Status */}
       <td className="py-6 px-3 align-middle whitespace-nowrap">
         <div className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5
-          ${isPrivateRow ? 'bg-white/8 text-white/70 border border-white/15' : ''}
-          ${status === 'Active' ? 'bg-green-500 text-black' : ''}
-          ${status === 'Idle' ? 'bg-yellow-400 text-black' : ''}
-          ${status === 'Inactive' ? 'bg-red-500 text-white' : ''}
-          ${status === 'Dead' ? 'bg-white/8 text-white/45 border border-white/15' : ''}
-          ${status === 'Timeout' ? 'bg-[#6A3DFF] text-black' : ''}
-          ${status === 'Error' ? 'bg-red-900/50 text-red-200 border border-red-500/30' : ''}
-          ${status === 'Loading' ? 'bg-white/8 text-white/45 border border-white/15' : ''}
+          ${isInvalidUrlFlag ? 'bg-orange-500 text-black' : ''}
+          ${isPrivateFlag ? 'bg-white/8 text-white/70 border border-white/15' : ''}
+          ${!isInvalidUrlFlag && status === 'Active' ? 'bg-green-500 text-black' : ''}
+          ${!isInvalidUrlFlag && status === 'Idle' ? 'bg-yellow-400 text-black' : ''}
+          ${!isInvalidUrlFlag && status === 'Inactive' ? 'bg-red-500 text-white' : ''}
+          ${!isInvalidUrlFlag && status === 'Dead' ? 'bg-white/8 text-white/45 border border-white/15' : ''}
+          ${!isInvalidUrlFlag && status === 'Timeout' ? 'bg-[#6A3DFF] text-black' : ''}
+          ${!isInvalidUrlFlag && status === 'Error' ? 'bg-red-900/50 text-red-200 border border-red-500/30' : ''}
+          ${!isInvalidUrlFlag && status === 'Loading' ? 'bg-white/8 text-white/45 border border-white/15' : ''}
         `}>
           {statusText}
         </div>
@@ -275,6 +314,8 @@ export const RepoRow = memo(RepoRowComponent, (prev, next) => {
     prev.teamName === next.teamName &&
     prev.data === next.data && 
     prev.index === next.index &&
-    prev.isRefreshing === next.isRefreshing
+    prev.isRefreshing === next.isRefreshing &&
+    prev.invalidUrl === next.invalidUrl &&
+    prev.repoLink === next.repoLink
   );
 });

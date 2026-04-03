@@ -22,6 +22,13 @@ interface ParsedTeamResult {
 
 const REQUIRED_COLUMN_ERROR = "Could not detect required columns. Check your file format";
 
+const normalizeRepoLink = (value: string) =>
+  value
+    .trim()
+    .replace(/\/tree\/.*$/, "")
+    .replace(/\/blob\/.*$/, "")
+    .replace(/\/+$/, "");
+
 const normalizeHeader = (value: string) =>
   value.trim().replace(/\.+$/g, "").toLowerCase().replace(/\s+/g, "").replace(/_/g, "").replace(/-/g, "");
 
@@ -79,7 +86,7 @@ const parseTeamsFromRows = (rows: Record<string, unknown>[]): ParsedTeamResult =
     .map((row) => {
       const teamId = String(row[teamIdKey] ?? "").trim();
       const teamNameValue = teamNameKey ? String(row[teamNameKey] ?? "").trim() : "";
-      const repoLinkValue = String(row[repoLinkKey] ?? "").trim().replace(/\/+$/, "").replace(/\.git$/i, "");
+      const repoLinkValue = normalizeRepoLink(String(row[repoLinkKey] ?? "")).replace(/\.git$/i, "");
 
       return {
         teamId,
@@ -119,14 +126,14 @@ const parseExcelFile = async (file: File): Promise<Record<string, unknown>[]> =>
 };
 
 const parseRepoKey = (repoLink: string): string | null => {
-  const trimmed = repoLink.trim().replace(/\.git$/i, "");
+  const trimmed = normalizeRepoLink(repoLink);
   if (!trimmed) return null;
 
   const parsePath = (pathValue: string) => {
     const parts = pathValue.split("/").filter(Boolean);
     if (parts.length < 2) return null;
-    const cleanRepo = parts[1].replace(/\.git$/, "");
-    const repoName = cleanRepo.replace(/\.git$/i, "");
+    const cleanRepo = parts[1].replace(/\.git$/, "").replace(/\/$/, "");
+    const repoName = cleanRepo.replace(/\.git$/i, "").replace(/\/$/, "");
     if (!repoName) return null;
     return `${parts[0]}/${repoName}`;
   };
@@ -162,7 +169,7 @@ const sanitizeTeamsPayload = (value: unknown): TeamProfile[] => {
       const teamName = typeof team.teamName === "string" ? team.teamName.trim() : "";
       const psId = typeof team.psId === "string" ? team.psId.trim() : "";
       const repoLink = typeof team.repoLink === "string"
-        ? team.repoLink.trim().replace(/\/+$/, "").replace(/\.git$/i, "")
+        ? normalizeRepoLink(team.repoLink).replace(/\.git$/i, "")
         : "";
 
       if (!teamId || !teamName || !psId || !repoLink) {
@@ -254,13 +261,11 @@ export default function DashboardPage() {
 
         if (persistedTeams.length > 0) {
           const repos = buildReposFromTeams(persistedTeams);
-          if (repos.length > 0) {
-            setProfile({
-              repos,
-              pat: persistedPat,
-              teams: persistedTeams,
-            });
-          }
+          setProfile({
+            repos,
+            pat: persistedPat,
+            teams: persistedTeams,
+          });
         }
 
         setIsAuthorized(true);
@@ -379,8 +384,8 @@ export default function DashboardPage() {
       }
 
       const repos = buildReposFromTeams(parsed.teams);
-      if (!repos.length) {
-        setUploadError("No valid repositories found in uploaded team data");
+      if (!parsed.teams.length) {
+        setUploadError("No team rows found in uploaded team data");
         return;
       }
 

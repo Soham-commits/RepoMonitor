@@ -59,8 +59,8 @@ function delay(ms: number): Promise<void> {
 }
 
 function normalizeRepoName(repoName: string): string {
-  const cleanRepo = repoName.replace(/\.git$/, "");
-  return cleanRepo.replace(/\.git$/i, "");
+  const cleanRepo = repoName.replace(/\.git$/, "").replace(/\/$/, "");
+  return cleanRepo.replace(/\.git$/i, "").replace(/\/$/, "");
 }
 
 function normalizeRepoString(repoStr: string): string | null {

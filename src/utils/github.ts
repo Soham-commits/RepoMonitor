@@ -4,8 +4,8 @@
 // ---------------------------------------------------------------------------
 // UTC Constants (hardcoded — no runtime conversion)
 // ---------------------------------------------------------------------------
-export const HACKATHON_START = "2026-01-01T00:00:00Z";
-export const HACKATHON_END = "2026-12-31T23:59:59Z";
+export const HACKATHON_START = "2026-04-02T06:00:00Z";
+export const HACKATHON_END = "2026-04-04T10:30:00Z";
 
 // ---------------------------------------------------------------------------
 // TypeScript Types
@@ -81,8 +81,8 @@ interface CacheEntry {
 }
 
 function normalizeRepoName(repoName: string): string {
-  const cleanRepo = repoName.replace(/\.git$/, "");
-  return cleanRepo.replace(/\.git$/i, "");
+  const cleanRepo = repoName.replace(/\.git$/, "").replace(/\/$/, "");
+  return cleanRepo.replace(/\.git$/i, "").replace(/\/$/, "");
 }
 
 function normalizeOwnerRepo(
@@ -126,6 +126,10 @@ export function setLastPollTime(
   isoTime: string
 ): void {
   lastPollTime.set(repoKey(owner, repo), isoTime);
+}
+
+export function clearLastPollTimes(): void {
+  lastPollTime.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -418,12 +422,11 @@ export async function fetchRepoData(
   }
 
   // -------------------------------------------------------------------------
-  // Tier 1: Repo info + delta commits (parallel)
+  // Tier 1: Repo info + contributors (parallel)
   // -------------------------------------------------------------------------
   const tier2Allowed = lastKnownRateLimitRemaining > 2000;
-  const [repoInfoResult, deltaResult, contributorsResult] = await Promise.all([
+  const [repoInfoResult, contributorsResult] = await Promise.all([
     fetchRepoInfo(ownerName, repoName, pat, signal),
-    fetchDeltaCommits(ownerName, repoName, pat, signal),
     tier2Allowed ? fetchContributors(ownerName, repoName, pat, signal) : Promise.resolve(null),
   ]);
 
@@ -488,71 +491,7 @@ export async function fetchRepoData(
   rateLimit = repoInfoSuccess.rateLimit;
   const repoInfo = repoInfoSuccess.data;
 
-  if ("error" in deltaResult && deltaResult.error === "timeout") {
-    return {
-      repoInfo,
-      deltaCommits: [],
-      recentCommits: [],
-      fullCommits: null,
-      contributorCount: null,
-      contributors: null,
-      rateLimit,
-      tier: 1,
-      error: "timeout",
-    };
-  }
-
-  if ("error" in deltaResult && deltaResult.error === "aborted") {
-    return {
-      repoInfo,
-      deltaCommits: [],
-      recentCommits: [],
-      fullCommits: null,
-      contributorCount: null,
-      contributors: null,
-      rateLimit,
-      tier: 1,
-      error: "aborted",
-    };
-  }
-
-  if ("error" in deltaResult && deltaResult.error === "rate_limited") {
-    return {
-      repoInfo,
-      deltaCommits: [],
-      recentCommits: [],
-      fullCommits: null,
-      contributorCount: null,
-      contributors: null,
-      rateLimit: deltaResult.rateLimit,
-      tier: 1,
-      error: "rate_limited",
-      retryAfter: deltaResult.retryAfter,
-    };
-  }
-
-  if ("error" in deltaResult && deltaResult.error === "not_found") {
-    return {
-      repoInfo,
-      deltaCommits: [],
-      recentCommits: [],
-      fullCommits: null,
-      contributorCount: null,
-      contributors: null,
-      rateLimit: deltaResult.rateLimit,
-      tier: 1,
-      error: "not_found",
-    };
-  }
-
-  let deltaCommits: CommitData[] = [];
-  if ("data" in deltaResult) {
-    rateLimit = deltaResult.rateLimit;
-    deltaCommits = deltaResult.data;
-  } else if ("commits" in deltaResult && deltaResult.status === "empty") {
-    rateLimit = deltaResult.rateLimit;
-    deltaCommits = [];
-  }
+  const deltaCommits: CommitData[] = [];
 
   // --- Tier 1b: Recent commits (last 30 total) ---
   const recentResult = await cachedGet<CommitData[]>(
@@ -633,40 +572,7 @@ export async function fetchRepoData(
     };
   }
 
-  // -------------------------------------------------------------------------
-  // Tier 2 — conditional on remaining > 2000
-  // -------------------------------------------------------------------------
-  if (rateLimit.remaining <= 2000) {
-    lastKnownRateLimitRemaining = rateLimit.remaining;
-    return {
-      repoInfo,
-      deltaCommits,
-      recentCommits,
-      fullCommits: null,
-      contributorCount: null,
-      contributors: null,
-      rateLimit,
-      tier: 1,
-    };
-  }
-
-  // Stop Tier 2 early if rate limit too low
-  if (rateLimit.remaining < 1000) {
-    lastKnownRateLimitRemaining = rateLimit.remaining;
-    return {
-      repoInfo,
-      deltaCommits,
-      recentCommits,
-      fullCommits: null,
-      contributorCount,
-      contributors,
-      rateLimit,
-      tier: 2,
-      stoppedEarly: true,
-    };
-  }
-
-  // --- Tier 2b: Full hackathon window commits (paginated) ---
+  // --- Full hackathon window commits (paginated, never mixed with delta) ---
   const fullCommitsBaseUrl =
     `https://api.github.com/repos/${ownerName}/${repoName}/commits` +
     `?since=${encodeURIComponent(HACKATHON_START)}&until=${encodeURIComponent(HACKATHON_END)}&per_page=100`;
@@ -840,8 +746,7 @@ export async function fetchRepoInfo(
       effectiveRateLimit = commitSuccess.rateLimit;
 
       const latest = commitSuccess.data?.[0];
-      const defaultBranchLastPush =
-        latest?.commit?.committer?.date ?? latest?.commit?.author?.date;
+      const defaultBranchLastPush = latest?.commit?.committer?.date;
 
       if (defaultBranchLastPush) {
         correctedPushedAt = defaultBranchLastPush;
@@ -1067,6 +972,11 @@ export function clearEtagCache(owner?: string, repo?: string): void {
   } else {
     etagCache.clear();
   }
+}
+
+export function clearPollingCaches(): void {
+  clearEtagCache();
+  clearLastPollTimes();
 }
 
 // ---------------------------------------------------------------------------

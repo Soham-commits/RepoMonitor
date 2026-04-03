@@ -3,7 +3,7 @@
 // Pure logic — no UI.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getRateLimitState } from "../utils/github";
+import { clearPollingCaches, getRateLimitState } from "../utils/github";
 import type { FetchRepoDataResult, RateLimitState } from "../utils/github";
 import type {
   WorkerInMessage,
@@ -47,8 +47,8 @@ export type UsePollerReturn = PollerState & PollerActions;
 const POLL_INTERVAL_SECONDS = 480; // 8 minutes
 
 function normalizeRepoName(repoName: string): string {
-  const cleanRepo = repoName.replace(/\.git$/, "");
-  return cleanRepo.replace(/\.git$/i, "");
+  const cleanRepo = repoName.replace(/\.git$/, "").replace(/\/$/, "");
+  return cleanRepo.replace(/\.git$/i, "").replace(/\/$/, "");
 }
 
 function normalizeRepoKey(repoKey: string): string | null {
@@ -79,11 +79,9 @@ function normalizeRepoList(repos: string[]): string[] {
 // skipped in degraded mode.
 function isRepoActive(result: FetchRepoDataResult): boolean {
   if (result.error) return false;
-  // If full commits is known and empty, and delta commits are empty → inactive
-  const fullEmpty =
-    result.fullCommits !== null && result.fullCommits.length === 0;
-  const deltaEmpty = result.deltaCommits.length === 0;
-  return !(fullEmpty && deltaEmpty);
+  // Hackathon activity is derived only from the full hackathon window commits.
+  if (result.fullCommits === null) return true;
+  return result.fullCommits.length > 0;
 }
 
 /**
@@ -241,16 +239,17 @@ export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
   // Dispatch a poll — builds repo list applying soft cap in degraded mode
   // ---------------------------------------------------------------------------
 
-  const dispatchPoll = useCallback(() => {
+  const dispatchPoll = useCallback((options?: { forceFull?: boolean }) => {
     if (!workerRef.current) return;
     if (pollingLockRef.current) return; // already polling — ignore
 
+    const forceFull = options?.forceFull === true;
     const { pat } = configRef.current;
     const repos = normalizeRepoList(configRef.current.repos);
 
     // Soft cap: in degraded mode skip repos with known zero hackathon commits
     let reposToFetch = repos;
-    if (pollStatusRef.current === "degraded") {
+    if (!forceFull && pollStatusRef.current === "degraded") {
       reposToFetch = repos.filter((r) => {
         const state = repoStatesRef.current.get(r);
         if (!state) return true; // unknown — include
@@ -266,9 +265,10 @@ export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
     // ⚡ Optimization 3: Optimistic UI — do NOT reset repoStates.
     // Keep showing last valid data. Only update individual rows on REPO_UPDATE.
     // Just mark status as polling for the refresh button spinner.
-    setPollStatus((prev) =>
-      prev === "degraded" ? "degraded" : "polling"
-    );
+    setPollStatus((prev) => {
+      if (!forceFull && prev === "degraded") return "degraded";
+      return "polling";
+    });
 
     // Mark ALL repos as refreshing (will be cleared individually on REPO_UPDATE)
     setRefreshingRepos(new Set(reposToFetch));
@@ -424,8 +424,9 @@ export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
       clearCountdown();
     });
 
-    // Trigger first poll immediately
-    dispatchPoll();
+    // Force a clean startup fetch to avoid stale ETag/last-poll artifacts.
+    clearPollingCaches();
+    dispatchPoll({ forceFull: true });
     void recoverFromRateLimitIfNeeded(false);
 
     return () => {
@@ -446,8 +447,8 @@ export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
 
   /**
    * Manually trigger an immediate poll.
-   * ⚡ Does NOT clear ETag cache — repos with no changes return 304 instantly.
-   * ⚡ Does NOT reset repoStates — shows last valid data while refreshing.
+   * Clears ETag + lastPollTime and forces a full fresh fetch of all repos.
+   * Keeps last valid repoStates visible while refreshing.
    * Silently ignored if a poll is already running.
    */
   const triggerManualRefresh = useCallback(() => {
@@ -463,8 +464,8 @@ export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
     resetCountdown();
     clearCountdown();
 
-    // Kick off immediately — NO cache clearing, NO state resetting
-    dispatchPoll();
+    clearPollingCaches();
+    dispatchPoll({ forceFull: true });
   }, [dispatchPoll]);
 
   const retryNow = useCallback(() => {
@@ -489,7 +490,8 @@ export function usePoller(initialConfig?: PollerConfig): UsePollerReturn {
       resetCountdown();
       setPollStatus("idle");
 
-      dispatchPoll();
+      clearPollingCaches();
+      dispatchPoll({ forceFull: true });
     },
     [dispatchPoll]
   );

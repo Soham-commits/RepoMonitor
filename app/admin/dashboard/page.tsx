@@ -15,14 +15,16 @@ interface Team {
 }
 
 interface TeamCommitState {
-  status: "idle" | "loading" | "ready" | "private" | "rate_limited"
+  status: "idle" | "loading" | "ready" | "private" | "rate_limited" | "invalid_url"
   firstCommit: string | null
   lastCommit: string | null
+  lastCommitMessage: string | null
   totalCommits: number | null
 }
 
 interface CommitApiItem {
   commit?: {
+    message?: string
     author?: { date?: string }
     committer?: { date?: string }
   }
@@ -32,6 +34,7 @@ interface CommitStats {
   totalCommits: number
   firstCommit: string | null
   lastCommit: string | null
+  lastCommitMessage: string | null
 }
 
 interface ParsedTeamResult {
@@ -43,8 +46,15 @@ type AdminSortKey = "Team Name" | "Team ID" | "PS ID" | "Total Commits"
 type AdminCombinedFilter = "All" | "Has Commits" | "No Commits" | `PS:${string}`
 
 const REQUIRED_COLUMN_ERROR = "Could not detect required columns. Check your file format"
-const COMMIT_SINCE = "2026-04-02T08:30:00Z"
-const COMMIT_UNTIL = "2026-04-04T18:29:00Z"
+const COMMIT_SINCE = "2026-04-02T06:00:00Z"
+const COMMIT_UNTIL = "2026-04-04T10:30:00Z"
+
+const normalizeRepoLink = (value: string) =>
+  value
+    .trim()
+    .replace(/\/tree\/.*$/, "")
+    .replace(/\/blob\/.*$/, "")
+    .replace(/\/+$/, "")
 
 const formatCommitTime = (iso: string) => {
   return new Intl.DateTimeFormat("en-US", {
@@ -60,15 +70,15 @@ const getTeamKey = (team: Team) => `${team.psId}::${team.teamId}::${team.repoLin
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 const extractOwnerRepo = (repoLink: string): { owner: string; repo: string } | null => {
-  const trimmed = repoLink.trim().replace(/\.git$/i, "")
+  const trimmed = normalizeRepoLink(repoLink)
 
   if (!trimmed) return null
 
   const parsePath = (pathValue: string) => {
     const parts = pathValue.split("/").filter(Boolean)
     if (parts.length < 2) return null
-    const cleanRepo = parts[1].replace(/\.git$/, "")
-    const repo = cleanRepo.replace(/\.git$/i, "")
+    const cleanRepo = parts[1].replace(/\.git$/, "").replace(/\/$/, "")
+    const repo = cleanRepo.replace(/\.git$/i, "").replace(/\/$/, "")
     if (!repo) return null
     return { owner: parts[0], repo }
   }
@@ -155,7 +165,7 @@ const parseTeamsFromRows = (rows: Record<string, unknown>[]): ParsedTeamResult =
     .map((row) => {
       const teamId = String(row[teamIdKey] ?? "").trim()
       const teamNameValue = teamNameKey ? String(row[teamNameKey] ?? "").trim() : ""
-      const repoLinkValue = String(row[repoLinkKey] ?? "").trim().replace(/\/+$/, "").replace(/\.git$/i, "")
+      const repoLinkValue = normalizeRepoLink(String(row[repoLinkKey] ?? "")).replace(/\.git$/i, "")
 
       return {
         teamId,
@@ -183,7 +193,7 @@ const sanitizeTeamsPayload = (value: unknown): Team[] => {
       const teamName = typeof team.teamName === "string" ? team.teamName.trim() : ""
       const psId = typeof team.psId === "string" ? team.psId.trim() : ""
       const repoLink = typeof team.repoLink === "string"
-        ? team.repoLink.trim().replace(/\/+$/, "").replace(/\.git$/i, "")
+        ? normalizeRepoLink(team.repoLink).replace(/\.git$/i, "")
         : ""
 
       if (!teamId || !teamName || !psId || !repoLink) {
@@ -424,25 +434,29 @@ export default function AdminDashboardPage() {
       }
       return {
         kind: "ok",
-        stats: { totalCommits: 0, firstCommit: null, lastCommit: null },
+        stats: { totalCommits: 0, firstCommit: null, lastCommit: null, lastCommitMessage: null },
       }
     }
 
     const commits = (await response.json()) as CommitApiItem[]
-    const commitDates = commits
-      .map((item) => item.commit?.author?.date || item.commit?.committer?.date)
-      .filter((value): value is string => Boolean(value))
-      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+    const commitEntries = commits
+      .map((item) => ({
+        date: item.commit?.author?.date || item.commit?.committer?.date || null,
+        message: item.commit?.message?.trim() || null,
+      }))
+      .filter((entry): entry is { date: string; message: string | null } => Boolean(entry.date))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
-    const firstDate = commitDates.length > 0 ? commitDates[0] : null
-    const lastDate = commitDates.length > 0 ? commitDates[commitDates.length - 1] : null
+    const firstEntry = commitEntries.length > 0 ? commitEntries[0] : null
+    const lastEntry = commitEntries.length > 0 ? commitEntries[commitEntries.length - 1] : null
 
     return {
       kind: "ok",
       stats: {
         totalCommits: commits.length,
-        firstCommit: firstDate,
-        lastCommit: lastDate,
+        firstCommit: firstEntry?.date ?? null,
+        lastCommit: lastEntry?.date ?? null,
+        lastCommitMessage: lastEntry?.message ?? null,
       },
     }
   }
@@ -460,9 +474,10 @@ export default function AdminDashboardPage() {
     if (!parsedRepo) {
       if (fetchCycleRef.current !== cycleId) return
       updateTeamCommit(team, {
-        status: "private",
+        status: "invalid_url",
         firstCommit: null,
         lastCommit: null,
+        lastCommitMessage: null,
         totalCommits: null,
       })
       return
@@ -481,6 +496,7 @@ export default function AdminDashboardPage() {
           status: "private",
           firstCommit: null,
           lastCommit: null,
+          lastCommitMessage: null,
           totalCommits: null,
         })
         return
@@ -491,6 +507,7 @@ export default function AdminDashboardPage() {
           status: "rate_limited",
           firstCommit: null,
           lastCommit: null,
+          lastCommitMessage: null,
           totalCommits: null,
         })
         return
@@ -506,6 +523,7 @@ export default function AdminDashboardPage() {
             status: "private",
             firstCommit: null,
             lastCommit: null,
+            lastCommitMessage: null,
             totalCommits: null,
           })
           return
@@ -516,6 +534,7 @@ export default function AdminDashboardPage() {
             status: "rate_limited",
             firstCommit: null,
             lastCommit: null,
+            lastCommitMessage: null,
             totalCommits: null,
           })
           return
@@ -525,6 +544,7 @@ export default function AdminDashboardPage() {
           status: "ready",
           firstCommit: fallbackResult.stats.firstCommit ? formatCommitTime(fallbackResult.stats.firstCommit) : null,
           lastCommit: fallbackResult.stats.lastCommit ? formatCommitTime(fallbackResult.stats.lastCommit) : null,
+          lastCommitMessage: fallbackResult.stats.lastCommitMessage,
           totalCommits: fallbackResult.stats.totalCommits,
         })
         return
@@ -534,6 +554,7 @@ export default function AdminDashboardPage() {
         status: "ready",
         firstCommit: windowResult.stats.firstCommit ? formatCommitTime(windowResult.stats.firstCommit) : null,
         lastCommit: windowResult.stats.lastCommit ? formatCommitTime(windowResult.stats.lastCommit) : null,
+        lastCommitMessage: windowResult.stats.lastCommitMessage,
         totalCommits: windowResult.stats.totalCommits,
       })
     } catch {
@@ -542,6 +563,7 @@ export default function AdminDashboardPage() {
         status: "private",
         firstCommit: null,
         lastCommit: null,
+        lastCommitMessage: null,
         totalCommits: null,
       })
     }
@@ -556,6 +578,7 @@ export default function AdminDashboardPage() {
         status: "loading",
         firstCommit: null,
         lastCommit: null,
+        lastCommitMessage: null,
         totalCommits: null,
       }
       return acc
@@ -1124,17 +1147,20 @@ export default function AdminDashboardPage() {
                     {psTeams.map((team) => {
                       const commitState = teamCommits[getTeamKey(team)]
                       const isLoading = commitState?.status === "loading"
+                      const isInvalidUrl = commitState?.status === "invalid_url"
                       const isPrivate = commitState?.status === "private"
                       const isRateLimited = commitState?.status === "rate_limited"
                       const parsedRepo = extractOwnerRepo(team.repoLink)
                       const openRepoLink = parsedRepo
                         ? `https://github.com/${parsedRepo.owner}/${parsedRepo.repo}`
-                        : team.repoLink.replace(/\/+$/, "").replace(/\.git$/i, "")
+                        : normalizeRepoLink(team.repoLink).replace(/\.git$/i, "")
                       const repoDisplay = parsedRepo ? `${parsedRepo.owner}/${parsedRepo.repo}` : team.repoLink
                       const commitsLink = parsedRepo ? `https://github.com/${parsedRepo.owner}/${parsedRepo.repo}/commits` : null
 
                       const statusLabel = isLoading
                         ? "LOADING"
+                        : isInvalidUrl
+                          ? "INVALID URL"
                         : isRateLimited
                           ? "RATE LIMITED"
                           : isPrivate
@@ -1147,6 +1173,8 @@ export default function AdminDashboardPage() {
 
                       const statusClass = isLoading
                         ? "bg-white/10 text-white/70 border border-white/15"
+                        : isInvalidUrl
+                          ? "bg-orange-500/20 text-orange-300 border border-orange-400/40"
                         : isRateLimited
                           ? "bg-amber-500/20 text-amber-300 border border-amber-400/40"
                           : isPrivate
@@ -1156,12 +1184,15 @@ export default function AdminDashboardPage() {
                               : "bg-red-500 text-white"
 
                       const flags: string[] = []
+                      if (isInvalidUrl) flags.push("INVALID URL")
                       if (isPrivate) flags.push("PRIVATE")
                       if (isRateLimited) flags.push("RATE LIMITED")
-                      if (!isLoading && !isPrivate && !isRateLimited && commitState?.totalCommits === 0) flags.push("NO COMMITS")
+                      if (!isLoading && !isInvalidUrl && !isPrivate && !isRateLimited && commitState?.totalCommits === 0) flags.push("NO COMMITS")
 
                       const lastPushDisplay = isLoading
                         ? "..."
+                        : isInvalidUrl
+                          ? "INVALID URL"
                         : isRateLimited
                           ? "RATE LIMITED"
                           : isPrivate
@@ -1170,11 +1201,23 @@ export default function AdminDashboardPage() {
 
                       const commitDisplay = isLoading
                         ? "..."
+                        : isInvalidUrl
+                          ? "INVALID URL"
                         : isRateLimited
                           ? "RATE LIMITED"
                           : isPrivate
                             ? "PRIVATE"
                             : commitState?.totalCommits?.toString() ?? "-"
+
+                      const lastCommitMessageDisplay = isLoading
+                        ? "..."
+                        : isInvalidUrl
+                          ? "INVALID URL"
+                        : isRateLimited
+                          ? "RATE LIMITED"
+                        : isPrivate
+                          ? "PRIVATE"
+                          : commitState?.lastCommitMessage || "-"
 
                       return (
                         <article
@@ -1202,6 +1245,13 @@ export default function AdminDashboardPage() {
                               <p className="text-white/45 uppercase tracking-wider text-[10px]">Commit Count</p>
                               <p className="text-white font-semibold mt-1">{commitDisplay}</p>
                             </div>
+                          </div>
+
+                          <div className="mt-3 rounded-xl bg-white/10 border border-white/20 px-3 py-2">
+                            <p className="text-white/45 uppercase tracking-wider text-[10px]">Last Commit Message</p>
+                            <p className="text-white/85 text-xs mt-1 leading-relaxed break-words line-clamp-2" title={commitState?.lastCommitMessage || undefined}>
+                              {lastCommitMessageDisplay}
+                            </p>
                           </div>
 
                           <div className="mt-3 flex items-center justify-between gap-2">
@@ -1243,11 +1293,11 @@ export default function AdminDashboardPage() {
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="text-[10px] uppercase tracking-wider border-b border-white/10 bg-white/10">
-                          <th className="py-4 px-6 font-black text-white/40 w-28">Team ID</th>
-                          <th className="py-4 px-6 font-black text-white">Team Name</th>
+                          <th className="py-4 px-6 font-black text-white">Team ID</th>
                           <th className="py-4 px-6 font-black text-white w-64">GitHub Repo</th>
                           <th className="py-4 px-6 font-black text-white text-center w-32">First Commit</th>
                           <th className="py-4 px-6 font-black text-white text-center w-32">Last Commit</th>
+                          <th className="py-4 px-6 font-black text-white w-[28rem]">Last Commit Message</th>
                           <th className="py-4 px-6 font-black text-white text-center w-32">Total Commits</th>
                         </tr>
                       </thead>
@@ -1256,12 +1306,13 @@ export default function AdminDashboardPage() {
                           (() => {
                             const commitState = teamCommits[getTeamKey(team)]
                             const isLoading = commitState?.status === "loading"
+                            const isInvalidUrl = commitState?.status === "invalid_url"
                             const isPrivate = commitState?.status === "private"
                             const isRateLimited = commitState?.status === "rate_limited"
                             const parsedRepo = extractOwnerRepo(team.repoLink)
                             const openRepoLink = parsedRepo
                               ? `https://github.com/${parsedRepo.owner}/${parsedRepo.repo}`
-                              : team.repoLink.replace(/\/+$/, "").replace(/\.git$/i, "")
+                              : normalizeRepoLink(team.repoLink).replace(/\.git$/i, "")
                             const commitsLink = parsedRepo ? `https://github.com/${parsedRepo.owner}/${parsedRepo.repo}/commits` : null
                             return (
                           <tr
@@ -1269,7 +1320,6 @@ export default function AdminDashboardPage() {
                             onClick={() => window.open(openRepoLink, "_blank")}
                             className="border-b border-white/5 last:border-0 bg-transparent hover:bg-white/8 transition-colors cursor-pointer"
                           >
-                            <td className="py-4 px-6 font-mono text-xs text-[#B06CFF]/80">{team.teamId}</td>
                             <td className="py-4 px-6 text-white font-semibold">{team.teamName}</td>
                             <td className="py-4 px-6 text-[#B06CFF] text-sm whitespace-nowrap">
                               <div className="inline-flex items-center gap-3 whitespace-nowrap">
@@ -1294,6 +1344,8 @@ export default function AdminDashboardPage() {
                             <td className="py-4 px-6 text-center text-white/45">
                               {isLoading ? (
                                 <span className="animate-pulse">...</span>
+                              ) : isInvalidUrl ? (
+                                <span className="text-orange-400 font-semibold">INVALID URL</span>
                               ) : isRateLimited ? (
                                 <span className="text-amber-400 font-semibold">RATE LIMITED</span>
                               ) : isPrivate ? (
@@ -1307,6 +1359,8 @@ export default function AdminDashboardPage() {
                             <td className="py-4 px-6 text-center text-white/45">
                               {isLoading ? (
                                 <span className="animate-pulse">...</span>
+                              ) : isInvalidUrl ? (
+                                <span className="text-orange-400 font-semibold">INVALID URL</span>
                               ) : isRateLimited ? (
                                 <span className="text-amber-400 font-semibold">RATE LIMITED</span>
                               ) : isPrivate ? (
@@ -1317,9 +1371,26 @@ export default function AdminDashboardPage() {
                                 <span className="text-white/40">-</span>
                               )}
                             </td>
+                            <td className="py-4 px-6 text-white/70 max-w-[28rem]">
+                              {isLoading ? (
+                                <span className="animate-pulse">...</span>
+                              ) : isInvalidUrl ? (
+                                <span className="text-orange-400 font-semibold">INVALID URL</span>
+                              ) : isRateLimited ? (
+                                <span className="text-amber-400 font-semibold">RATE LIMITED</span>
+                              ) : isPrivate ? (
+                                <span className="text-red-400 font-semibold">PRIVATE</span>
+                              ) : commitState?.lastCommitMessage ? (
+                                <span className="block truncate" title={commitState.lastCommitMessage}>{commitState.lastCommitMessage}</span>
+                              ) : (
+                                <span className="text-white/40">-</span>
+                              )}
+                            </td>
                             <td className="py-4 px-6 text-center">
                               {isLoading ? (
                                 <span className="animate-pulse text-white/45">...</span>
+                              ) : isInvalidUrl ? (
+                                <span className="text-orange-400 font-semibold">INVALID URL</span>
                               ) : isRateLimited ? (
                                 <span className="text-amber-400 font-semibold">RATE LIMITED</span>
                               ) : isPrivate ? (
